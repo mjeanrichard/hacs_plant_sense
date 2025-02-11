@@ -23,12 +23,9 @@ jobs:
         run: |
           cd "${{ github.workspace }}/custom_components/plant_sense"
           zip plant_sense.zip -r ./
-          cd "${{ github.workspace }}/custom_components/mqtt_state_publisher"
-          zip mqtt_state_publisher.zip -r ./
 
       - name: "Upload the ZIP file to the release"
         uses: "softprops/action-gh-release@v2.2.1"
         with:
           files: |
             ${{ github.workspace }}/custom_components/plant_sense/plant_sense.zip
-            ${{ github.workspace }}/custom_components/mqtt_state_publisher/mqtt_state_publisher.zip
