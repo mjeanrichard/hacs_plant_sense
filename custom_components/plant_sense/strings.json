@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add PlantSense Device",
+        "description": "Please enter the serial (MAC) of the device int the form xxxxxxxxxxxx",
+        "data": {
+          "DEVICE_SERIAL": "PlantSense Serial"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  }
+}

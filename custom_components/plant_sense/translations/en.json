@@ -1,0 +1,14 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Device is already configured"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "DEVICE_SERIAL": "PlantSense Serial"
+        }
+      }
+    }
+  }
+}

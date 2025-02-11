@@ -1,0 +1,19 @@
+{
+  "domain": "plant_sense",
+  "name": "PlantSense",
+  "codeowners": [
+    "@mjeanrichard"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "mqtt"
+  ],
+  "documentation": "https://github.com/mjeanrichard/hass_custom_integrations",
+  "homekit": {},
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/mjeanrichard/hass_custom_integrations",
+  "requirements": [],
+  "ssdp": [],
+  "version": "0.2",
+  "zeroconf": []
+}

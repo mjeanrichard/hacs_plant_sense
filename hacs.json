@@ -1,0 +1,6 @@
+{
+  "name": "PlantSense",
+  "hide_default_branch": true,
+  "homeassistant": "2025.2.2",
+  "render_readme": true
+}
