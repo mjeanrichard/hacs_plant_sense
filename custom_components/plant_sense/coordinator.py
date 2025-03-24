@@ -82,13 +82,13 @@ class PlantSenseCoordinator:
     async def _update_config(self, json_message: JsonObjectType) -> None:
         """Update the configuration from the PlantSense."""
         try:
-            new_config_version: int = cast(int, json_message.get("v"))
+            new_config_version: int = cast("int", json_message.get("v"))
         except KeyError:
             _LOGGER.exception("Configuration is missing the version!")
             return
 
         try:
-            new_name = cast(str, json_message.get("name"))
+            new_name = cast("str", json_message.get("name"))
         except KeyError:
             _LOGGER.exception("Configuration is missing the name!")
             return
@@ -137,7 +137,7 @@ class PlantSenseCoordinator:
 
         self._data = json
         try:
-            device_config_version: int = cast(int, json.get("v"))
+            device_config_version: int = cast("int", json.get("v"))
         except KeyError:
             _LOGGER.exception("Configuration is missing the version!")
             return
