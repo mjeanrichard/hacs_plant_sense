@@ -1,4 +1,6 @@
 import logging
+from datetime import date, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
@@ -139,11 +141,11 @@ class GenericPlantSenseSensor(SensorEntity, PlantSenseComponent):
         self._value_key = value_key
 
     async def update_async(self) -> None:
-        if self._coordinator.data is None:
+        if self._coordinator.last_data is None:
             return
 
-        value = self._coordinator.data.get(self._value_key)
-        if value is not None:
+        value = self._coordinator.last_data.get(self._value_key)
+        if isinstance(value, (str | int | float | date | datetime | Decimal)):
             self._attr_native_value = value
             await self.async_update_ha_state(force_refresh=True)
 

@@ -1,12 +1,33 @@
 {
   "config": {
-    "abort": {
-      "already_configured": "Device is already configured"
-    },
+    "flow_title": "PlantSense {devicename} ({serial})",
     "step": {
       "user": {
+        "title": "Add PlantSense Device",
+        "description": "Please enter the serial (MAC) of the device int the form xxxxxxxxxxxx",
         "data": {
           "DEVICE_SERIAL": "PlantSense Serial"
+        }
+      },
+      "integration_discovery_confirm": {
+        "description": "Do you want to set up the PlantSense device {devicename} (Serial: {serial})?"
+      }
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+      "already_in_progress": "[%key:common::config_flow::abort::already_in_progress%]",
+      "no_devices_found": "[%key:common::config_flow::abort::no_devices_found%]"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure PlantSense Device",
+        "description": "Please enter the serial (MAC) of the device int the form xxxxxxxxxxxx",
+        "data": {
+          "enable_test": "Use data from Test Devices",
+          "name": "Name of the device",
+          "update_config": "Update the configuration of the device"
         }
       }
     }

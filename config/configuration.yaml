@@ -10,7 +10,7 @@ homeassistant:
 logger:
   default: info
   logs:
-    custom_components.integration_blueprint: debug
+    custom_components.plant_sense: debug
 
 mqtt_state_publisher:
   base_topic: homeassistant/statestream/test
