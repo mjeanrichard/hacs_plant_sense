@@ -1,20 +1,30 @@
 """Coordinator for PlantSense."""
 
+import asyncio
 import logging
-from typing import Any
+from typing import cast
 
 import homeassistant.helpers.device_registry as dr
 from homeassistant.components import mqtt
-from homeassistant.components.mqtt.models import ReceiveMessage
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import (
     DeviceEntry,
     DeviceInfo,
     DeviceRegistry,
 )
-from homeassistant.util.json import json_loads
+from homeassistant.util.json import JsonObjectType
 
-from .const import DOMAIN
+from custom_components.plant_sense.data import PlantSenseData
+
+from .const import (
+    CONF_DEVICE_SERIAL,
+    DATA_LAST_CONFIG_VERSION,
+    DOMAIN,
+    OPTIONS_ENABLE_TEST,
+    OPTIONS_NAME,
+    OPTIONS_UPDATE_CONFIG,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,42 +40,85 @@ class PlantSenseCoordinator:
     _device_serial: str
     _device_id: str
     _components: list[PlantSenseComponent]
-    data: Any
+    _data: JsonObjectType | None
 
+    _entry: ConfigEntry[PlantSenseData]
     _device_registry: DeviceRegistry
-    _device_name: str
+    _display_name: str
+    _use_test_data: bool
 
-    def __init__(self, hass: HomeAssistant, device_id: str, device_serial: str) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry[PlantSenseData]) -> None:
         """Initialize PlantSenseCoordinator."""
+        self._entry = entry
+        self._use_test_data = entry.options.get(OPTIONS_ENABLE_TEST, False)
         self.hass = hass
-        self._device_serial = device_serial
-        self._device_id = device_id
-        self.data = None
+        self._device_serial = entry.data[CONF_DEVICE_SERIAL]
+        self._device_id = entry.unique_id or ""
+        self._data = None
         self._device_registry = dr.async_get(self.hass)
-        self._device_name = f"PlantSense {self._device_serial}"
+        self._display_name = entry.title
         self._components = []
 
-    async def connect(self) -> None:
-        device = self._get_device()
-        if device is not None and device.name is not None:
-            self._device_name = device.name
+    async def handle_message(self, json_message: JsonObjectType) -> None:
+        """Handle a message from the PlantSense."""
+        msg_type = json_message.get("msg")
+        _LOGGER.info("Received message type '%s'.", msg_type)
 
-        @callback
-        async def mqtt_callback(message: ReceiveMessage) -> None:
-            """Pass MQTT payload to DROP API parser."""
-            json_message = json_loads(message.payload)
-            if (
-                isinstance(json_message, dict)
-                and json_message.get("model") == "PlantSense"
-                and json_message.get("id") == self._device_serial
-            ):
-                await self._update_sensors(json_message)
+        if msg_type == "data":
+            await self._update_sensors(json_message)
+        elif msg_type == "config":
+            await self._update_config(json_message)
 
-        await mqtt.client.async_subscribe(
+    async def _request_config(self) -> None:
+        """Request the current configuration from the PlantSense."""
+        _LOGGER.info("Requesting config for %s.", self._device_serial)
+        await asyncio.sleep(0.1)
+        await mqtt.client.async_publish(
             self.hass,
-            f"devices/OMG_LILYGO/LORAtoMQTT/{self._device_serial}",
-            mqtt_callback,
+            "devices/OMG_LILYGO/commands/MQTTtoLORA",
+            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"get_config\\"}}"}}',
         )
+
+    async def _update_config(self, json_message: JsonObjectType) -> None:
+        """Update the configuration from the PlantSense."""
+        try:
+            new_config_version: int = cast(int, json_message.get("v"))
+        except KeyError:
+            _LOGGER.exception("Configuration is missing the version!")
+            return
+
+        try:
+            new_name = cast(str, json_message.get("name"))
+        except KeyError:
+            _LOGGER.exception("Configuration is missing the name!")
+            return
+
+        try:
+            old_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])
+        except (KeyError, ValueError):
+            old_config_version = 0
+
+        if new_config_version > old_config_version:
+            _LOGGER.info(
+                "Configuration was updated to %s (from %s).",
+                new_config_version,
+                old_config_version,
+            )
+
+            self._display_name = f"PlantSense {new_name}"
+            await self._update_device_name(self._display_name)
+
+            options = {**self._entry.options}
+            data = {**self._entry.data}
+
+            options[OPTIONS_UPDATE_CONFIG] = False
+            options[OPTIONS_NAME] = new_name
+
+            data[DATA_LAST_CONFIG_VERSION] = new_config_version
+
+            self.hass.config_entries.async_update_entry(
+                self._entry, title=self._display_name, options=options, data=data
+            )
 
     def register_component(self, component: PlantSenseComponent) -> None:
         self._components.append(component)
@@ -73,30 +126,76 @@ class PlantSenseCoordinator:
     def remove_component(self, component: PlantSenseComponent) -> None:
         self._components.remove(component)
 
-    async def _update_sensors(self, data: Any) -> None:
+    async def _update_sensors(self, json: JsonObjectType) -> None:
         """Update the Sensors with the new Data."""
-        self.data = data
-        self._device_name = f"PlantSense {data["name"]}"
+        if json["test"] and not self._use_test_data:
+            _LOGGER.info(
+                "Skipping update for (%s) because it was test data...",
+                self._device_serial,
+            )
+            return
 
-        device = self._get_device()
-        if device is not None and device.name != self._device_name:
-            self._device_registry.async_update_device(device.id, name=self._device_name)
+        self._data = json
+        try:
+            device_config_version: int = cast(int, json.get("v"))
+        except KeyError:
+            _LOGGER.exception("Configuration is missing the version!")
+            return
+
+        try:
+            ha_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])
+        except (KeyError, ValueError):
+            ha_config_version = 0
+
+        if self._entry.options.get(OPTIONS_UPDATE_CONFIG, False):
+            # There is a pending configuration update, sending it to the device.
+            _LOGGER.info("Updating configuration for '%s'...", self._device_serial)
+            await self._send_config_to_device()
+        elif ha_config_version < device_config_version:
+            _LOGGER.info(
+                "Our configuration is outdated to (ours: %s, device %s).",
+                ha_config_version,
+                device_config_version,
+            )
+            await self._request_config()
 
         for component in self._components:
             await component.update_async()
+
+    async def _update_device_name(self, new_name: str) -> None:
+        """Update the name of the device."""
+        device = self._get_device()
+        if device is None:
+            return
+
+        self._device_registry.async_update_device(device.id, name=new_name)
 
     def _get_device(self) -> DeviceEntry | None:
         return self._device_registry.async_get_device(
             identifiers={(DOMAIN, self._device_id)}
         )
 
+    async def _send_config_to_device(self) -> None:
+        """Update the configuration of the PlantSense."""
+        name = self._entry.options.get(OPTIONS_NAME)
+        await asyncio.sleep(0.1)
+        await mqtt.client.async_publish(
+            self.hass,
+            "devices/OMG_LILYGO/commands/MQTTtoLORA",
+            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"name\\":\\"{name}\\"}}"}}',
+        )
+
     @property
     def device_name(self) -> str:
-        return self._device_name
+        return self._display_name
 
     @property
     def device_id(self) -> str:
         return self._device_id
+
+    @property
+    def last_data(self) -> JsonObjectType | None:
+        return self._data
 
     @property
     def device_info(self) -> DeviceInfo:

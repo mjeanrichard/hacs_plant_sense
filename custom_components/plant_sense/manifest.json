@@ -8,12 +8,12 @@
   "dependencies": [
     "mqtt"
   ],
-  "documentation": "https://github.com/mjeanrichard/hass_custom_integrations",
+  "documentation": "https://github.com/mjeanrichard/hacs_plant_sense",
   "homekit": {},
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/mjeanrichard/hass_custom_integrations",
+  "issue_tracker": "https://github.com/mjeanrichard/hacs_plant_sense/issues",
   "requirements": [],
   "ssdp": [],
-  "version": "0.2",
+  "version": "0.3",
   "zeroconf": []
 }
