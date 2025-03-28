@@ -5,10 +5,10 @@ DOMAIN = "plant_sense"
 CONF_MQTT_ROOT = "MQTT_ROOT_TOPIC"
 CONF_DEVICE_SERIAL = "DEVICE_SERIAL"
 
-OPTIONS_NAME = "name"
+OPTIONS_UPDATE_NAME = "name"
 OPTIONS_UPDATE_CONFIG = "update_config"
+OPTIONS_UDPATE_TEST_MODE = "update_test_mode"
 OPTIONS_ENABLE_TEST = "enable_test"
-OPTIONS_SECTION_UDPATE = "update_section"
 
 DATA_LAST_CONFIG_VERSION = "config_version"
 

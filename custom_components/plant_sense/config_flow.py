@@ -15,14 +15,17 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.plant_sense.helpers import build_unique_id
+
 from .const import (
     CONF_DEVICE_SERIAL,
     DISCOVERY_NAME,
     DISCOVERY_SERIAL,
     DOMAIN,
     OPTIONS_ENABLE_TEST,
-    OPTIONS_NAME,
+    OPTIONS_UDPATE_TEST_MODE,
     OPTIONS_UPDATE_CONFIG,
+    OPTIONS_UPDATE_NAME,
 )
 
 if TYPE_CHECKING:
@@ -56,7 +59,7 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
                 step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
             )
 
-        device_unique_id = f"PlantSense-{user_input[CONF_DEVICE_SERIAL]}"
+        device_unique_id = build_unique_id(user_input[CONF_DEVICE_SERIAL])
 
         await self.async_set_unique_id(device_unique_id)
         self._abort_if_unique_id_configured()
@@ -76,7 +79,11 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle integration discovery."""
         self._dicovery_serial = discovery_info[DISCOVERY_SERIAL]
-        self._dicovery_unique_id = f"PlantSense-{self._dicovery_serial}"
+
+        if (self._dicovery_serial is None) or (self._dicovery_serial == ""):
+            return self.async_abort(reason="no_devices_found")
+
+        self._dicovery_unique_id = build_unique_id(self._dicovery_serial)
         self._discovery_name = discovery_info.get(DISCOVERY_NAME, "-")
 
         # We do not want to raise on progress as integration_discovery takes
@@ -100,7 +107,7 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             return self.async_create_entry(
-                title=self._dicovery_unique_id,
+                title=f"PlantSense {self._discovery_name}",
                 data={CONF_DEVICE_SERIAL: self._dicovery_serial},
             )
 
@@ -133,8 +140,9 @@ class OptionsFlowHandler(OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         enable_test = self.entry.options.get(OPTIONS_ENABLE_TEST, False)
+        test_mode = self.entry.options.get(OPTIONS_UDPATE_TEST_MODE, False)
         update_config = self.entry.options.get(OPTIONS_UPDATE_CONFIG, False)
-        name = self.entry.options.get(OPTIONS_NAME, "")
+        name = self.entry.options.get(OPTIONS_UPDATE_NAME, "")
 
         return self.async_show_form(
             step_id="init",
@@ -142,7 +150,8 @@ class OptionsFlowHandler(OptionsFlow):
                 {
                     vol.Optional(OPTIONS_ENABLE_TEST, default=enable_test): bool,
                     vol.Optional(OPTIONS_UPDATE_CONFIG, default=update_config): bool,
-                    vol.Optional(OPTIONS_NAME, default=name): str,
+                    vol.Optional(OPTIONS_UPDATE_NAME, default=name): str,
+                    vol.Optional(OPTIONS_UDPATE_TEST_MODE, default=test_mode): str,
                 }
             ),
         )

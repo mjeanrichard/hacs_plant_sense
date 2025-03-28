@@ -22,8 +22,9 @@ from .const import (
     DATA_LAST_CONFIG_VERSION,
     DOMAIN,
     OPTIONS_ENABLE_TEST,
-    OPTIONS_NAME,
+    OPTIONS_UDPATE_TEST_MODE,
     OPTIONS_UPDATE_CONFIG,
+    OPTIONS_UPDATE_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -81,21 +82,20 @@ class PlantSenseCoordinator:
 
     async def _update_config(self, json_message: JsonObjectType) -> None:
         """Update the configuration from the PlantSense."""
-        try:
-            new_config_version: int = cast("int", json_message.get("v"))
-        except KeyError:
-            _LOGGER.exception("Configuration is missing the version!")
-            return
+        new_config_version = json_message.get("v")
+        if (not isinstance(new_config_version, "int")) or new_config_version is None:
+            new_config_version = 0
 
-        try:
-            new_name = cast("str", json_message.get("name"))
-        except KeyError:
-            _LOGGER.exception("Configuration is missing the name!")
-            return
+        new_name = json_message.get("name")
+        if not isinstance(new_name, "str"):
+            new_name = "unknown"
 
-        try:
-            old_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])
-        except (KeyError, ValueError):
+        test_mode = json_message.get("test")
+        if not isinstance(test_mode, "bool"):
+            test_mode = False
+
+        old_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])
+        if (not isinstance(old_config_version, "int")) or old_config_version is None:
             old_config_version = 0
 
         if new_config_version > old_config_version:
@@ -112,7 +112,8 @@ class PlantSenseCoordinator:
             data = {**self._entry.data}
 
             options[OPTIONS_UPDATE_CONFIG] = False
-            options[OPTIONS_NAME] = new_name
+            options[OPTIONS_UPDATE_NAME] = new_name
+            options[OPTIONS_UDPATE_TEST_MODE] = test_mode
 
             data[DATA_LAST_CONFIG_VERSION] = new_config_version
 
@@ -177,12 +178,14 @@ class PlantSenseCoordinator:
 
     async def _send_config_to_device(self) -> None:
         """Update the configuration of the PlantSense."""
-        name = self._entry.options.get(OPTIONS_NAME)
+        name = self._entry.options.get(OPTIONS_UPDATE_NAME)
+        test_mode = self._entry.options.get(OPTIONS_UDPATE_TEST_MODE)
+
         await asyncio.sleep(0.1)
         await mqtt.client.async_publish(
             self.hass,
             "devices/OMG_LILYGO/commands/MQTTtoLORA",
-            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"name\\":\\"{name}\\"}}"}}',
+            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"test":\\{test_mode},\\"name\\":\\"{name}\\"}}"}}',
         )
 
     @property

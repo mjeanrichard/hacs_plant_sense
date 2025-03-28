@@ -13,6 +13,7 @@ from homeassistant.util.json import JsonObjectType, json_loads_object
 
 from custom_components.plant_sense.const import DISCOVERY_NAME, DISCOVERY_SERIAL, DOMAIN
 from custom_components.plant_sense.data import PlantSenseData
+from custom_components.plant_sense.helpers import build_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,10 +91,10 @@ class MqttManager:
 
     async def _handle_message(self, json_message: JsonObjectType) -> None:
         """Handle a message from the PlantSense."""
-        device_id = json_message.get("id")
+        device_serial = json_message.get("id")
         name = json_message.get("name")
 
-        if not isinstance(device_id, str):
+        if not isinstance(device_serial, str):
             _LOGGER.exception("Invalid device id in message.")
             return
 
@@ -102,12 +103,12 @@ class MqttManager:
 
         device_registry = dr.async_get(self._hass)
         device = device_registry.async_get_device(
-            identifiers={(DOMAIN, f"PlantSense-{device_id}")}
+            identifiers={(DOMAIN, build_unique_id(device_serial))}
         )
 
         if device is None:
-            _LOGGER.warning("No device found for id '%s'", device_id)
-            self._start_discovery(device_id, name)
+            _LOGGER.warning("No device found for serial '%s'", device_serial)
+            self._start_discovery(device_serial, name)
             return
 
         for entry_id in device.config_entries:

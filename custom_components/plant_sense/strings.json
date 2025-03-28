@@ -25,9 +25,10 @@
         "title": "Configure PlantSense Device",
         "description": "Please enter the serial (MAC) of the device int the form xxxxxxxxxxxx",
         "data": {
-          "enable_test": "Use data from Test Devices",
-          "name": "Name of the device",
-          "update_config": "Update the configuration of the device"
+          "enable_test": "Use data from devices in test mode",
+          "name": "Change the name of the device",
+          "update_config": "Update the configuration of the device",
+          "update_test_mode": "Enable test mode on the device"
         }
       }
     }
