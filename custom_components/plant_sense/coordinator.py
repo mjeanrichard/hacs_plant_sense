@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from typing import cast
 
 import homeassistant.helpers.device_registry as dr
 from homeassistant.components import mqtt
@@ -83,19 +82,19 @@ class PlantSenseCoordinator:
     async def _update_config(self, json_message: JsonObjectType) -> None:
         """Update the configuration from the PlantSense."""
         new_config_version = json_message.get("v")
-        if (not isinstance(new_config_version, "int")) or new_config_version is None:
+        if (not isinstance(new_config_version, int)) or new_config_version is None:
             new_config_version = 0
 
         new_name = json_message.get("name")
-        if not isinstance(new_name, "str"):
+        if not isinstance(new_name, str):
             new_name = "unknown"
 
         test_mode = json_message.get("test")
-        if not isinstance(test_mode, "bool"):
+        if not isinstance(test_mode, bool):
             test_mode = False
 
         old_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])
-        if (not isinstance(old_config_version, "int")) or old_config_version is None:
+        if (not isinstance(old_config_version, int)) or old_config_version is None:
             old_config_version = 0
 
         if new_config_version > old_config_version:
@@ -137,11 +136,11 @@ class PlantSenseCoordinator:
             return
 
         self._data = json
-        try:
-            device_config_version: int = cast("int", json.get("v"))
-        except KeyError:
-            _LOGGER.exception("Configuration is missing the version!")
-            return
+
+        device_config_version = json.get("v")
+        if not isinstance(device_config_version, int):
+            _LOGGER.warning("Device '%s' did not send a version.", self.device_id)
+            device_config_version = 0
 
         try:
             ha_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])

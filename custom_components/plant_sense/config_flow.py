@@ -151,7 +151,7 @@ class OptionsFlowHandler(OptionsFlow):
                     vol.Optional(OPTIONS_ENABLE_TEST, default=enable_test): bool,
                     vol.Optional(OPTIONS_UPDATE_CONFIG, default=update_config): bool,
                     vol.Optional(OPTIONS_UPDATE_NAME, default=name): str,
-                    vol.Optional(OPTIONS_UDPATE_TEST_MODE, default=test_mode): str,
+                    vol.Optional(OPTIONS_UDPATE_TEST_MODE, default=test_mode): bool,
                 }
             ),
         )
