@@ -184,7 +184,7 @@ class PlantSenseCoordinator:
         await mqtt.client.async_publish(
             self.hass,
             "devices/OMG_LILYGO/commands/MQTTtoLORA",
-            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"test\\":{test_mode},\\"name\\":\\"{name}\\"}}"}}',
+            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"test\\":{str(test_mode).lower()},\\"name\\":\\"{name}\\"}}"}}',
         )
 
     @property
