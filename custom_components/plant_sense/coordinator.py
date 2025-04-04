@@ -52,7 +52,7 @@ class PlantSenseCoordinator:
         self._entry = entry
         self._use_test_data = entry.options.get(OPTIONS_ENABLE_TEST, False)
         self.hass = hass
-        self._device_serial = entry.data[CONF_DEVICE_SERIAL]
+        self._device_serial = entry.data.get(CONF_DEVICE_SERIAL, 0)
         self._device_id = entry.unique_id or ""
         self._data = None
         self._device_registry = dr.async_get(self.hass)
@@ -81,19 +81,17 @@ class PlantSenseCoordinator:
 
     async def _update_config(self, json_message: JsonObjectType) -> None:
         """Update the configuration from the PlantSense."""
-        new_config_version = json_message.get("v")
+        new_config_version = json_message.get("v", 0)
         if (not isinstance(new_config_version, int)) or new_config_version is None:
             new_config_version = 0
 
-        new_name = json_message.get("name")
-        if not isinstance(new_name, str):
-            new_name = "unknown"
+        new_name = str(json_message.get("name", "unknown"))
 
-        test_mode = json_message.get("test")
+        test_mode = json_message.get("test", False)
         if not isinstance(test_mode, bool):
             test_mode = False
 
-        old_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])
+        old_config_version = int(self._entry.data.get(DATA_LAST_CONFIG_VERSION, 0))
         if (not isinstance(old_config_version, int)) or old_config_version is None:
             old_config_version = 0
 
@@ -128,7 +126,7 @@ class PlantSenseCoordinator:
 
     async def _update_sensors(self, json: JsonObjectType) -> None:
         """Update the Sensors with the new Data."""
-        if json["test"] and not self._use_test_data:
+        if json.get("test", False) and not self._use_test_data:
             _LOGGER.info(
                 "Skipping update for (%s) because it was test data...",
                 self._device_serial,
@@ -137,7 +135,7 @@ class PlantSenseCoordinator:
 
         self._data = json
 
-        device_config_version = json.get("v")
+        device_config_version = json.get("v", 0)
         if not isinstance(device_config_version, int):
             _LOGGER.warning("Device '%s' did not send a version.", self.device_id)
             device_config_version = 0
@@ -177,8 +175,8 @@ class PlantSenseCoordinator:
 
     async def _send_config_to_device(self) -> None:
         """Update the configuration of the PlantSense."""
-        name = self._entry.options.get(OPTIONS_UPDATE_NAME)
-        test_mode = self._entry.options.get(OPTIONS_UDPATE_TEST_MODE)
+        name = self._entry.options.get(OPTIONS_UPDATE_NAME, "")
+        test_mode = self._entry.options.get(OPTIONS_UDPATE_TEST_MODE, False)
 
         await asyncio.sleep(0.1)
         await mqtt.client.async_publish(
