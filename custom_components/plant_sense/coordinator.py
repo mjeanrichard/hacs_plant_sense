@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from abc import ABC, abstractmethod
 
 import homeassistant.helpers.device_registry as dr
 from homeassistant.components import mqtt
@@ -21,17 +22,19 @@ from .const import (
     DATA_LAST_CONFIG_VERSION,
     DOMAIN,
     OPTIONS_ENABLE_TEST,
-    OPTIONS_UDPATE_TEST_MODE,
+    OPTIONS_MOI_DRY,
+    OPTIONS_MOI_WET,
     OPTIONS_UPDATE_CONFIG,
     OPTIONS_UPDATE_NAME,
+    OPTIONS_UPDATE_TEST_MODE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class PlantSenseComponent:
-    async def update_async(self) -> None:
-        pass
+class PlantSenseComponent(ABC):
+    @abstractmethod
+    async def update_async(self) -> None: ...
 
 
 class PlantSenseCoordinator:
@@ -52,7 +55,7 @@ class PlantSenseCoordinator:
         self._entry = entry
         self._use_test_data = entry.options.get(OPTIONS_ENABLE_TEST, False)
         self.hass = hass
-        self._device_serial = entry.data.get(CONF_DEVICE_SERIAL, 0)
+        self._device_serial = entry.data.get(CONF_DEVICE_SERIAL, "")
         self._device_id = entry.unique_id or ""
         self._data = None
         self._device_registry = dr.async_get(self.hass)
@@ -82,7 +85,7 @@ class PlantSenseCoordinator:
     async def _update_config(self, json_message: JsonObjectType) -> None:
         """Update the configuration from the PlantSense."""
         new_config_version = json_message.get("v", 0)
-        if (not isinstance(new_config_version, int)) or new_config_version is None:
+        if not isinstance(new_config_version, int):
             new_config_version = 0
 
         new_name = str(json_message.get("name", "unknown"))
@@ -91,13 +94,22 @@ class PlantSenseCoordinator:
         if not isinstance(test_mode, bool):
             test_mode = False
 
-        old_config_version = int(self._entry.data.get(DATA_LAST_CONFIG_VERSION, 0))
-        if (not isinstance(old_config_version, int)) or old_config_version is None:
+        moi_dry = json_message.get("moiDry")
+        if not isinstance(moi_dry, int):
+            moi_dry = None
+
+        moi_wet = json_message.get("moiWet")
+        if not isinstance(moi_wet, int):
+            moi_wet = None
+
+        try:
+            old_config_version = int(self._entry.data.get(DATA_LAST_CONFIG_VERSION, 0))
+        except (ValueError, TypeError):
             old_config_version = 0
 
-        if new_config_version > old_config_version:
+        if new_config_version != old_config_version:
             _LOGGER.info(
-                "Configuration was updated to %s (from %s).",
+                "Storing config version %s (replacing %s).",
                 new_config_version,
                 old_config_version,
             )
@@ -110,7 +122,11 @@ class PlantSenseCoordinator:
 
             options[OPTIONS_UPDATE_CONFIG] = False
             options[OPTIONS_UPDATE_NAME] = new_name
-            options[OPTIONS_UDPATE_TEST_MODE] = test_mode
+            options[OPTIONS_UPDATE_TEST_MODE] = test_mode
+            if moi_dry is not None:
+                options[OPTIONS_MOI_DRY] = moi_dry
+            if moi_wet is not None:
+                options[OPTIONS_MOI_WET] = moi_wet
 
             data[DATA_LAST_CONFIG_VERSION] = new_config_version
 
@@ -149,9 +165,9 @@ class PlantSenseCoordinator:
             # There is a pending configuration update, sending it to the device.
             _LOGGER.info("Updating configuration for '%s'...", self._device_serial)
             await self._send_config_to_device()
-        elif ha_config_version < device_config_version:
+        elif ha_config_version != device_config_version:
             _LOGGER.info(
-                "Our configuration is outdated to (ours: %s, device %s).",
+                "Config version mismatch (ours: %s, device: %s), requesting config.",
                 ha_config_version,
                 device_config_version,
             )
@@ -176,13 +192,15 @@ class PlantSenseCoordinator:
     async def _send_config_to_device(self) -> None:
         """Update the configuration of the PlantSense."""
         name = self._entry.options.get(OPTIONS_UPDATE_NAME, "")
-        test_mode = self._entry.options.get(OPTIONS_UDPATE_TEST_MODE, False)
+        test_mode = self._entry.options.get(OPTIONS_UPDATE_TEST_MODE, False)
+        moi_dry = self._entry.options.get(OPTIONS_MOI_DRY, 0)
+        moi_wet = self._entry.options.get(OPTIONS_MOI_WET, 0)
 
         await asyncio.sleep(0.1)
         await mqtt.client.async_publish(
             self.hass,
             "devices/OMG_LILYGO/commands/MQTTtoLORA",
-            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"test\\":{str(test_mode).lower()},\\"name\\":\\"{name}\\"}}"}}',
+            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"test\\":{str(test_mode).lower()},\\"name\\":\\"{name}\\",\\"moiDry\\":{moi_dry},\\"moiWet\\":{moi_wet}}}"}}',
         )
 
     @property

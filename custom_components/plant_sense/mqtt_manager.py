@@ -7,7 +7,7 @@ import homeassistant.helpers.device_registry as dr
 from homeassistant.components import mqtt
 from homeassistant.components.mqtt.models import ReceiveMessage
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntryState
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers import discovery_flow
 from homeassistant.util.json import JsonObjectType, json_loads_object
 
@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class MqttManager:
-    """Manages the MQTT connection for PLantSense devices."""
+    """Manages the MQTT connection for PlantSense devices."""
 
     _data: Any
     _is_connected: bool
@@ -32,9 +32,8 @@ class MqttManager:
         self._is_connected = False
 
     async def connect(self) -> None:
-        @callback
         async def mqtt_callback(message: ReceiveMessage) -> None:
-            """Pass MQTT payload to DROP API parser."""
+            """Pass MQTT payload to API parser."""
             try:
                 json_message = json_loads_object(message.payload)
                 if not isinstance(json_message, dict):
@@ -81,7 +80,7 @@ class MqttManager:
         self._unsubscribe_mqtt()
 
     def _start_discovery(self, device_id: str, name: str) -> None:
-        _LOGGER.info("Starting dicovery for '%s' (%s).", name, device_id)
+        _LOGGER.info("Starting discovery for '%s' (%s).", name, device_id)
         discovery_flow.async_create_flow(
             self._hass,
             DOMAIN,
@@ -122,9 +121,3 @@ class MqttManager:
                 and config_entry.runtime_data.coordinator is not None
             ):
                 await config_entry.runtime_data.coordinator.handle_message(json_message)
-
-    async def _request_config(self) -> None:
-        """Request the current configuration from the PlantSense."""
-
-    async def _update_config(self, json_message: JsonObjectType) -> None:
-        """Update the configuration from the PlantSense."""

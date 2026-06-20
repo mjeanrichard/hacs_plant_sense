@@ -26,6 +26,8 @@
         "description": "Please enter the serial (MAC) of the device int the form xxxxxxxxxxxx",
         "data": {
           "enable_test": "Use data from devices in test mode",
+          "moi_dry": "Moisture dry point (raw ADC value when soil is dry)",
+          "moi_wet": "Moisture wet point (raw ADC value when soil is wet)",
           "name": "Change the name of the device",
           "update_config": "Update the configuration of the device",
           "update_test_mode": "Enable test mode on the device"

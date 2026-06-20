@@ -4,5 +4,5 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-ruff format .
-ruff check . --fix
+RUFF_CACHE_DIR=/tmp/ruff_cache ruff format .
+RUFF_CACHE_DIR=/tmp/ruff_cache ruff check . --fix

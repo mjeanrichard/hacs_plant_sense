@@ -23,9 +23,11 @@ from .const import (
     DISCOVERY_SERIAL,
     DOMAIN,
     OPTIONS_ENABLE_TEST,
-    OPTIONS_UDPATE_TEST_MODE,
+    OPTIONS_MOI_DRY,
+    OPTIONS_MOI_WET,
     OPTIONS_UPDATE_CONFIG,
     OPTIONS_UPDATE_NAME,
+    OPTIONS_UPDATE_TEST_MODE,
 )
 
 if TYPE_CHECKING:
@@ -44,8 +46,8 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for PlantSense."""
 
     VERSION = 1
-    _dicovery_serial: str | None = None
-    _dicovery_unique_id: str | None = None
+    _discovery_serial: str | None = None
+    _discovery_unique_id: str | None = None
     _discovery_name: str = "-"
 
     async def async_step_user(
@@ -78,12 +80,12 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
         self, discovery_info: DiscoveryInfoType
     ) -> ConfigFlowResult:
         """Handle integration discovery."""
-        self._dicovery_serial = discovery_info[DISCOVERY_SERIAL]
+        self._discovery_serial = discovery_info[DISCOVERY_SERIAL]
 
-        if (self._dicovery_serial is None) or (self._dicovery_serial == ""):
+        if (self._discovery_serial is None) or (self._discovery_serial == ""):
             return self.async_abort(reason="no_devices_found")
 
-        self._dicovery_unique_id = build_unique_id(self._dicovery_serial)
+        self._discovery_unique_id = build_unique_id(self._discovery_serial)
         self._discovery_name = discovery_info.get(DISCOVERY_NAME, "-")
 
         # We do not want to raise on progress as integration_discovery takes
@@ -92,7 +94,7 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
         # After we do discovery we will abort the flows that do not have the keys
         # below unless the user is already setting them up.
         await self.async_set_unique_id(
-            self._dicovery_unique_id, raise_on_progress=False
+            self._discovery_unique_id, raise_on_progress=False
         )
         self._abort_if_unique_id_configured()
 
@@ -102,18 +104,18 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle a confirmation of discovered integration."""
-        if self._dicovery_serial is None or self._dicovery_unique_id is None:
+        if self._discovery_serial is None or self._discovery_unique_id is None:
             return self.async_abort(reason="no_devices_found")
 
         if user_input is not None:
             return self.async_create_entry(
                 title=f"PlantSense {self._discovery_name}",
-                data={CONF_DEVICE_SERIAL: self._dicovery_serial},
+                data={CONF_DEVICE_SERIAL: self._discovery_serial},
             )
 
         placeholders = {
             "devicename": self._discovery_name,
-            "serial": self._dicovery_serial,
+            "serial": self._discovery_serial,
         }
 
         self.context["title_placeholders"] = placeholders
@@ -140,9 +142,11 @@ class OptionsFlowHandler(OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         enable_test = self.entry.options.get(OPTIONS_ENABLE_TEST, False)
-        test_mode = self.entry.options.get(OPTIONS_UDPATE_TEST_MODE, False)
+        test_mode = self.entry.options.get(OPTIONS_UPDATE_TEST_MODE, False)
         update_config = self.entry.options.get(OPTIONS_UPDATE_CONFIG, False)
         name = self.entry.options.get(OPTIONS_UPDATE_NAME, "")
+        moi_dry = self.entry.options.get(OPTIONS_MOI_DRY, 0)
+        moi_wet = self.entry.options.get(OPTIONS_MOI_WET, 0)
 
         return self.async_show_form(
             step_id="init",
@@ -151,7 +155,9 @@ class OptionsFlowHandler(OptionsFlow):
                     vol.Optional(OPTIONS_ENABLE_TEST, default=enable_test): bool,
                     vol.Optional(OPTIONS_UPDATE_CONFIG, default=update_config): bool,
                     vol.Optional(OPTIONS_UPDATE_NAME, default=name): str,
-                    vol.Optional(OPTIONS_UDPATE_TEST_MODE, default=test_mode): bool,
+                    vol.Optional(OPTIONS_UPDATE_TEST_MODE, default=test_mode): bool,
+                    vol.Optional(OPTIONS_MOI_DRY, default=moi_dry): int,
+                    vol.Optional(OPTIONS_MOI_WET, default=moi_wet): int,
                 }
             ),
         )
