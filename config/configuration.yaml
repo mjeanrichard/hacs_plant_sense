@@ -2,6 +2,9 @@
 # https://www.home-assistant.io/integrations/default_config/
 default_config:
 
+# go2rtc binary is not available in the devcontainer; disable it so default_config loads cleanly.
+go2rtc:
+
 # https://www.home-assistant.io/integrations/homeassistant/
 homeassistant:
   debug: true
@@ -12,5 +15,5 @@ logger:
   logs:
     custom_components.plant_sense: debug
 
-mqtt_state_publisher:
+mqtt_statestream:
   base_topic: homeassistant/statestream/test

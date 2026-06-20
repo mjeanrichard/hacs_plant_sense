@@ -98,3 +98,39 @@ RUFF_CACHE_DIR=/tmp/ruff_cache python3 -m ruff format . --check
 - **HA minimum version (HACS):** `hacs.json` sets `"homeassistant": "2025.12.3"` — the oldest HA release the integration supports.
 - **Integration has no external Python requirements** — `manifest.json` `"requirements": []` is empty; the integration only uses HA built-ins and the `mqtt` component.
 - **Dependabot** watches GitHub Actions, pip, and devcontainer features weekly.
+
+## JSON protocol (raw LoRa, no LoRaWAN)
+
+**Uplink — data:**
+```json
+{"model":"PlantSense","msg":"data","id":"<mac>","name":"<name>",
+ "tempc":<float>,"hum":<float>,"bat":<float>,"batPct":<int>,
+ "moi":<int>,"moiRaw":<int>,"test":<bool>,"idx":<uint>,"v":<uint>,"fw":"<version>"}
+```
+
+**Uplink — wifi:**
+```json
+{"model":"PlantSense","msg":"wifi","id":"<mac>","name":"<name>",
+ "test":<bool>,"wifiRssi":<int>,"uptime":<uint>,"fw":"<version>"}
+```
+
+**Downlink — set config:**
+```json
+{"id":"<mac>","cmd":"set_config","name":"...","sleep":300,"wait":10,
+ "txPower":15,"retransmits":2,"test":false,"moiDry":2700,"moiWet":700}
+```
+All fields optional. `moiDry`/`moiWet` are raw ADC millivolt readings; observe `moiRaw` in data packets under dry and wet conditions to determine values.
+
+**Downlink — get config:**
+```json
+{"id":"<mac>","cmd":"get_config"}
+```
+
+**Uplink — config response:**
+```json
+{"model":"PlantSense","msg":"config","id":"<mac>","name":"<name>",
+ "test":<bool>,"sleep":<int>,"retx":<uint>,"wait":<uint>,"pwr":<uint>,
+ "moiDry":<uint>,"moiWet":<uint>,"v":<uint>,"fw":"<version>"}
+```
+
+Gateway used: OpenMQTTGateway on a LilyGO board.

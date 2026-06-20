@@ -139,11 +139,26 @@ class OptionsFlowHandler(OptionsFlow):
     ) -> ConfigFlowResult:
         """Display option dialog."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            config_fields = [
+                OPTIONS_UPDATE_NAME,
+                OPTIONS_UPDATE_TEST_MODE,
+                OPTIONS_MOI_DRY,
+                OPTIONS_MOI_WET,
+            ]
+            config_changed = any(
+                user_input.get(key) != self.entry.options.get(key)
+                for key in config_fields
+            )
+            options = {**user_input}
+            options[OPTIONS_UPDATE_CONFIG] = (
+                True
+                if config_changed
+                else self.entry.options.get(OPTIONS_UPDATE_CONFIG, False)
+            )
+            return self.async_create_entry(title="", data=options)
 
         enable_test = self.entry.options.get(OPTIONS_ENABLE_TEST, False)
         test_mode = self.entry.options.get(OPTIONS_UPDATE_TEST_MODE, False)
-        update_config = self.entry.options.get(OPTIONS_UPDATE_CONFIG, False)
         name = self.entry.options.get(OPTIONS_UPDATE_NAME, "")
         moi_dry = self.entry.options.get(OPTIONS_MOI_DRY, 0)
         moi_wet = self.entry.options.get(OPTIONS_MOI_WET, 0)
@@ -153,7 +168,6 @@ class OptionsFlowHandler(OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Optional(OPTIONS_ENABLE_TEST, default=enable_test): bool,
-                    vol.Optional(OPTIONS_UPDATE_CONFIG, default=update_config): bool,
                     vol.Optional(OPTIONS_UPDATE_NAME, default=name): str,
                     vol.Optional(OPTIONS_UPDATE_TEST_MODE, default=test_mode): bool,
                     vol.Optional(OPTIONS_MOI_DRY, default=moi_dry): int,

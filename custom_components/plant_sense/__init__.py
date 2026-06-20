@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 from .coordinator import PlantSenseCoordinator
 from .data import PlantSenseData
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +42,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = PlantSenseCoordinator(hass, entry)
     entry.runtime_data = PlantSenseData(coordinator=coordinator)
-    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -53,9 +52,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading entry %s", entry.entry_id)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload entry if options change."""
-    _LOGGER.debug("Reloading entry %s", entry.entry_id)
-    await hass.config_entries.async_reload(entry.entry_id)

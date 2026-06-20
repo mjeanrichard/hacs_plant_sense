@@ -19,6 +19,10 @@ from custom_components.plant_sense.data import PlantSenseData
 
 from .const import (
     CONF_DEVICE_SERIAL,
+    DATA_CONFIRMED_MOI_DRY,
+    DATA_CONFIRMED_MOI_WET,
+    DATA_CONFIRMED_NAME,
+    DATA_CONFIRMED_TEST_MODE,
     DATA_LAST_CONFIG_VERSION,
     DOMAIN,
     OPTIONS_ENABLE_TEST,
@@ -48,12 +52,10 @@ class PlantSenseCoordinator:
     _entry: ConfigEntry[PlantSenseData]
     _device_registry: DeviceRegistry
     _display_name: str
-    _use_test_data: bool
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry[PlantSenseData]) -> None:
         """Initialize PlantSenseCoordinator."""
         self._entry = entry
-        self._use_test_data = entry.options.get(OPTIONS_ENABLE_TEST, False)
         self.hass = hass
         self._device_serial = entry.data.get(CONF_DEVICE_SERIAL, "")
         self._device_id = entry.unique_id or ""
@@ -129,6 +131,12 @@ class PlantSenseCoordinator:
                 options[OPTIONS_MOI_WET] = moi_wet
 
             data[DATA_LAST_CONFIG_VERSION] = new_config_version
+            data[DATA_CONFIRMED_NAME] = new_name
+            data[DATA_CONFIRMED_TEST_MODE] = test_mode
+            if moi_dry is not None:
+                data[DATA_CONFIRMED_MOI_DRY] = moi_dry
+            if moi_wet is not None:
+                data[DATA_CONFIRMED_MOI_WET] = moi_wet
 
             self.hass.config_entries.async_update_entry(
                 self._entry, title=self._display_name, options=options, data=data
@@ -142,7 +150,9 @@ class PlantSenseCoordinator:
 
     async def _update_sensors(self, json: JsonObjectType) -> None:
         """Update the Sensors with the new Data."""
-        if json.get("test", False) and not self._use_test_data:
+        if json.get("test", False) and not self._entry.options.get(
+            OPTIONS_ENABLE_TEST, False
+        ):
             _LOGGER.info(
                 "Skipping update for (%s) because it was test data...",
                 self._device_serial,
@@ -202,6 +212,38 @@ class PlantSenseCoordinator:
             "devices/OMG_LILYGO/commands/MQTTtoLORA",
             f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"test\\":{str(test_mode).lower()},\\"name\\":\\"{name}\\",\\"moiDry\\":{moi_dry},\\"moiWet\\":{moi_wet}}}"}}',
         )
+
+    async def async_abort_config_push(self) -> None:
+        """Cancel a pending config push and revert options to last confirmed values."""
+        if not self.config_pending:
+            return
+
+        data = self._entry.data
+        options = {**self._entry.options}
+
+        options[OPTIONS_UPDATE_CONFIG] = False
+        options[OPTIONS_UPDATE_NAME] = data.get(
+            DATA_CONFIRMED_NAME, options.get(OPTIONS_UPDATE_NAME, "")
+        )
+        options[OPTIONS_UPDATE_TEST_MODE] = data.get(
+            DATA_CONFIRMED_TEST_MODE, options.get(OPTIONS_UPDATE_TEST_MODE, False)
+        )
+        options[OPTIONS_MOI_DRY] = data.get(
+            DATA_CONFIRMED_MOI_DRY, options.get(OPTIONS_MOI_DRY, 0)
+        )
+        options[OPTIONS_MOI_WET] = data.get(
+            DATA_CONFIRMED_MOI_WET, options.get(OPTIONS_MOI_WET, 0)
+        )
+
+        self.hass.config_entries.async_update_entry(self._entry, options=options)
+
+    @property
+    def config_pending(self) -> bool:
+        return bool(self._entry.options.get(OPTIONS_UPDATE_CONFIG, False))
+
+    @property
+    def entry(self) -> ConfigEntry[PlantSenseData]:
+        return self._entry
 
     @property
     def device_name(self) -> str:

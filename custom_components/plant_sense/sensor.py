@@ -29,7 +29,8 @@ async def async_setup_entry(
 ) -> None:
     """Add sensors for passed config_entry in HA."""
     data: PlantSenseData = config_entry.runtime_data
-    sensor_list = [
+    sensor_list: list[SensorEntity] = [
+        ConfigPendingSensor(hass=hass, coordinator=data.coordinator),
         GenericPlantSenseSensor(
             hass=hass,
             coordinator=data.coordinator,
@@ -180,3 +181,44 @@ class GenericPlantSenseSensor(SensorEntity, PlantSenseComponent):
     async def async_will_remove_from_hass(self) -> None:
         """Entity being removed from hass."""
         self._coordinator.remove_component(self)
+
+
+class ConfigPendingSensor(SensorEntity):
+    """Sensor that reflects whether a config push to the device is pending."""
+
+    _coordinator: PlantSenseCoordinator
+
+    def __init__(self, hass: HomeAssistant, coordinator: PlantSenseCoordinator) -> None:
+        """Initialize the config pending sensor."""
+        self._coordinator = coordinator
+        self._attr_should_poll = False
+        self._attr_unique_id = f"{coordinator.device_id}_config_pending"
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{coordinator.device_id}_config_pending", hass=hass
+        )
+
+    @property
+    def name(self) -> str:
+        return f"{self._coordinator.device_name} Config Status"
+
+    @property
+    def native_value(self) -> str:
+        return "pending" if self._coordinator.config_pending else "synced"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return self._coordinator.device_info
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            self._coordinator.entry.add_update_listener(self._handle_entry_update)
+        )
+
+    async def _handle_entry_update(
+        self, _hass: HomeAssistant, _entry: ConfigEntry
+    ) -> None:
+        self.async_write_ha_state()
