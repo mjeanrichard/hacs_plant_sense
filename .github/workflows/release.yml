@@ -38,5 +38,7 @@ jobs:
       - name: "Upload the ZIP file to the release"
         uses: "softprops/action-gh-release@v3.0.1"
         with:
+          tag_name: "v${{ inputs.version }}"
+          name: v${{ inputs.version }}
           files: |
             ${{ github.workspace }}/custom_components/plant_sense/plant_sense.zip
