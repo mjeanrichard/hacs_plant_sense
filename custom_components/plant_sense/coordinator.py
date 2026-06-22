@@ -52,6 +52,7 @@ class PlantSenseCoordinator:
     _entry: ConfigEntry[PlantSenseData]
     _device_registry: DeviceRegistry
     _display_name: str
+    _firmware_version: str | None
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry[PlantSenseData]) -> None:
         """Initialize PlantSenseCoordinator."""
@@ -62,6 +63,7 @@ class PlantSenseCoordinator:
         self._data = None
         self._device_registry = dr.async_get(self.hass)
         self._display_name = entry.title
+        self._firmware_version = None
         self._components = []
 
     async def handle_message(self, json_message: JsonObjectType) -> None:
@@ -118,6 +120,7 @@ class PlantSenseCoordinator:
 
             self._display_name = f"PlantSense {new_name}"
             await self._update_device_name(self._display_name)
+            await self._update_firmware_version(json_message)
 
             options = {**self._entry.options}
             data = {**self._entry.data}
@@ -160,6 +163,7 @@ class PlantSenseCoordinator:
             return
 
         self._data = json
+        await self._update_firmware_version(json)
 
         device_config_version = json.get("v", 0)
         if not isinstance(device_config_version, int):
@@ -193,6 +197,15 @@ class PlantSenseCoordinator:
             return
 
         self._device_registry.async_update_device(device.id, name=new_name)
+
+    async def _update_firmware_version(self, json_message: JsonObjectType) -> None:
+        fw = json_message.get("fw")
+        if not isinstance(fw, str) or fw == self._firmware_version:
+            return
+        self._firmware_version = fw
+        device = self._get_device()
+        if device is not None:
+            self._device_registry.async_update_device(device.id, sw_version=fw)
 
     def _get_device(self) -> DeviceEntry | None:
         return self._device_registry.async_get_device(
@@ -265,5 +278,6 @@ class PlantSenseCoordinator:
             manufacturer="Jean-Richard",
             model="PlantSense",
             serial_number=self._device_serial,
+            sw_version=self._firmware_version,
             identifiers={(DOMAIN, self._device_id)},
         )

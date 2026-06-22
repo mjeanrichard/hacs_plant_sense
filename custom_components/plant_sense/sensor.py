@@ -9,7 +9,12 @@ from homeassistant.components.sensor import (
     SensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, SIGNAL_STRENGTH_DECIBELS, UnitOfTemperature
+from homeassistant.const import (
+    PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS,
+    EntityCategory,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo, async_generate_entity_id
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -75,6 +80,7 @@ async def async_setup_entry(
             id_suffix="rssi",
             name="RSSI",
             value_key="rssi",
+            entity_category=EntityCategory.DIAGNOSTIC,
         ),
         GenericPlantSenseSensor(
             hass=hass,
@@ -85,6 +91,7 @@ async def async_setup_entry(
             name="SNR",
             value_key="snr",
             icon="mdi:wifi",
+            entity_category=EntityCategory.DIAGNOSTIC,
         ),
         GenericPlantSenseSensor(
             hass=hass,
@@ -94,6 +101,7 @@ async def async_setup_entry(
             id_suffix="test",
             name="Test",
             value_key="test",
+            entity_category=EntityCategory.DIAGNOSTIC,
         ),
         GenericPlantSenseSensor(
             hass=hass,
@@ -103,6 +111,7 @@ async def async_setup_entry(
             id_suffix="battery_volt",
             name="Battery Voltage",
             value_key="bat",
+            entity_category=EntityCategory.DIAGNOSTIC,
         ),
         GenericPlantSenseSensor(
             hass=hass,
@@ -112,6 +121,17 @@ async def async_setup_entry(
             id_suffix="config_version",
             name="Config Version",
             value_key="v",
+            entity_category=EntityCategory.DIAGNOSTIC,
+        ),
+        GenericPlantSenseSensor(
+            hass=hass,
+            coordinator=data.coordinator,
+            device_class=None,
+            unit_of_measurement=None,
+            id_suffix="moisture_raw",
+            name="Moisture Raw",
+            value_key="moiRaw",
+            entity_category=EntityCategory.DIAGNOSTIC,
         ),
     ]
     async_add_entities(sensor_list)
@@ -134,6 +154,7 @@ class GenericPlantSenseSensor(SensorEntity, PlantSenseComponent):
         id_suffix: str,
         value_key: str,
         icon: str | None = None,
+        entity_category: EntityCategory | None = None,
     ) -> None:
         """Initialize the sensor."""
         self._coordinator = coordinator
@@ -142,6 +163,7 @@ class GenericPlantSenseSensor(SensorEntity, PlantSenseComponent):
         self._attr_native_unit_of_measurement = unit_of_measurement
         self._attr_unique_id = f"{coordinator.device_id}_{id_suffix}"
         self._attr_icon = icon
+        self._attr_entity_category = entity_category
 
         self.entity_id = async_generate_entity_id(
             ENTITY_ID_FORMAT, f"{coordinator.device_id}_{id_suffix}", hass=hass
@@ -157,7 +179,7 @@ class GenericPlantSenseSensor(SensorEntity, PlantSenseComponent):
         value = self._coordinator.last_data.get(self._value_key)
         if isinstance(value, (str | int | float | date | datetime | Decimal)):
             self._attr_native_value = value
-            await self.async_update_ha_state(force_refresh=True)
+            self.async_write_ha_state()
 
     @property
     def name(self) -> str:
@@ -192,6 +214,7 @@ class ConfigPendingSensor(SensorEntity):
         """Initialize the config pending sensor."""
         self._coordinator = coordinator
         self._attr_should_poll = False
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{coordinator.device_id}_config_pending"
         self.entity_id = async_generate_entity_id(
             ENTITY_ID_FORMAT, f"{coordinator.device_id}_config_pending", hass=hass

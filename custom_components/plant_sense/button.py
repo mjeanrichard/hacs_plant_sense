@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.button import ENTITY_ID_FORMAT, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo, async_generate_entity_id
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -38,6 +39,7 @@ class CancelConfigPushButton(ButtonEntity):
         """Initialize the button."""
         self._coordinator = coordinator
         self._attr_should_poll = False
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{coordinator.device_id}_cancel_config_push"
         self._attr_icon = "mdi:cancel"
         self.entity_id = async_generate_entity_id(
