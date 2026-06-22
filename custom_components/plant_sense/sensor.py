@@ -36,6 +36,7 @@ async def async_setup_entry(
     data: PlantSenseData = config_entry.runtime_data
     sensor_list: list[SensorEntity] = [
         ConfigPendingSensor(hass=hass, coordinator=data.coordinator),
+        WifiConfiguredSensor(hass=hass, coordinator=data.coordinator),
         GenericPlantSenseSensor(
             hass=hass,
             coordinator=data.coordinator,
@@ -113,16 +114,7 @@ async def async_setup_entry(
             value_key="bat",
             entity_category=EntityCategory.DIAGNOSTIC,
         ),
-        GenericPlantSenseSensor(
-            hass=hass,
-            coordinator=data.coordinator,
-            device_class=None,
-            unit_of_measurement=None,
-            id_suffix="config_version",
-            name="Config Version",
-            value_key="v",
-            entity_category=EntityCategory.DIAGNOSTIC,
-        ),
+        ConfigVersionSensor(hass=hass, coordinator=data.coordinator),
         GenericPlantSenseSensor(
             hass=hass,
             coordinator=data.coordinator,
@@ -227,6 +219,93 @@ class ConfigPendingSensor(SensorEntity):
     @property
     def native_value(self) -> str:
         return "pending" if self._coordinator.config_pending else "synced"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return self._coordinator.device_info
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            self._coordinator.entry.add_update_listener(self._handle_entry_update)
+        )
+
+    async def _handle_entry_update(
+        self, _hass: HomeAssistant, _entry: ConfigEntry
+    ) -> None:
+        self.async_write_ha_state()
+
+
+class WifiConfiguredSensor(SensorEntity):
+    """Sensor indicating whether WiFi credentials are configured on the device."""
+
+    _coordinator: PlantSenseCoordinator
+
+    def __init__(self, hass: HomeAssistant, coordinator: PlantSenseCoordinator) -> None:
+        """Initialize the wifi configured sensor."""
+        self._coordinator = coordinator
+        self._attr_should_poll = False
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_icon = "mdi:wifi-settings"
+        self._attr_unique_id = f"{coordinator.device_id}_wifi_configured"
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{coordinator.device_id}_wifi_configured", hass=hass
+        )
+
+    @property
+    def name(self) -> str:
+        return f"{self._coordinator.device_name} WiFi Configured"
+
+    @property
+    def native_value(self) -> str | None:
+        if self._coordinator.wifi_configured is None:
+            return None
+        return "configured" if self._coordinator.wifi_configured else "not_configured"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return self._coordinator.device_info
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            self._coordinator.entry.add_update_listener(self._handle_entry_update)
+        )
+
+    async def _handle_entry_update(
+        self, _hass: HomeAssistant, _entry: ConfigEntry
+    ) -> None:
+        self.async_write_ha_state()
+
+
+class ConfigVersionSensor(SensorEntity):
+    """Sensor reporting the config version from HA-stored entry data."""
+
+    _coordinator: PlantSenseCoordinator
+
+    def __init__(self, hass: HomeAssistant, coordinator: PlantSenseCoordinator) -> None:
+        """Initialize the config version sensor."""
+        self._coordinator = coordinator
+        self._attr_should_poll = False
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_unique_id = f"{coordinator.device_id}_config_version"
+        self.entity_id = async_generate_entity_id(
+            ENTITY_ID_FORMAT, f"{coordinator.device_id}_config_version", hass=hass
+        )
+
+    @property
+    def name(self) -> str:
+        return f"{self._coordinator.device_name} Config Version"
+
+    @property
+    def native_value(self) -> int:
+        return self._coordinator.config_version
 
     @property
     def device_info(self) -> DeviceInfo:

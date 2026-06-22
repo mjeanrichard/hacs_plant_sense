@@ -15,5 +15,3 @@ logger:
   logs:
     custom_components.plant_sense: debug
 
-mqtt_statestream:
-  base_topic: homeassistant/statestream/test

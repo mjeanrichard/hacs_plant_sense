@@ -94,7 +94,7 @@ RUFF_CACHE_DIR=/tmp/ruff_cache python3 -m ruff format . --check
 ## Dev environment notes
 
 - **Devcontainer Python version:** 3.13 (`mcr.microsoft.com/devcontainers/python:3.13`)
-- **HA dev dependency:** `requirements.txt` pins `homeassistant==2026.2.3` (the version used for local development and testing).
+- **HA dev dependency:** `requirements.txt` pins `homeassistant==2026.6.0` (the version used for local development and testing).
 - **HA minimum version (HACS):** `hacs.json` sets `"homeassistant": "2025.12.3"` — the oldest HA release the integration supports.
 - **Integration has no external Python requirements** — `manifest.json` `"requirements": []` is empty; the integration only uses HA built-ins and the `mqtt` component.
 - **Dependabot** watches GitHub Actions, pip, and devcontainer features weekly.
@@ -117,9 +117,10 @@ RUFF_CACHE_DIR=/tmp/ruff_cache python3 -m ruff format . --check
 **Downlink — set config:**
 ```json
 {"id":"<mac>","cmd":"set_config","name":"...","sleep":300,"wait":10,
- "txPower":15,"retransmits":2,"test":false,"moiDry":2700,"moiWet":700}
+ "txPower":15,"retransmits":2,"test":false,"moiDry":2700,"moiWet":700,
+ "ssid":"MyNetwork","wifiPwd":"secret"}
 ```
-All fields optional. `moiDry`/`moiWet` are raw ADC millivolt readings; observe `moiRaw` in data packets under dry and wet conditions to determine values.
+All fields optional. `moiDry`/`moiWet` are raw ADC millivolt readings; observe `moiRaw` in data packets under dry and wet conditions to determine values. `ssid`/`wifiPwd` are required before issuing an `ota` command.
 
 **Downlink — get config:**
 ```json
@@ -130,7 +131,15 @@ All fields optional. `moiDry`/`moiWet` are raw ADC millivolt readings; observe `
 ```json
 {"model":"PlantSense","msg":"config","id":"<mac>","name":"<name>",
  "test":<bool>,"sleep":<int>,"retx":<uint>,"wait":<uint>,"pwr":<uint>,
- "moiDry":<uint>,"moiWet":<uint>,"v":<uint>,"fw":"<version>"}
+ "moiDry":<uint>,"moiWet":<uint>,"wifiSet":<bool>,"v":<uint>,"fw":"<version>"}
 ```
+
+**Downlink — OTA update:**
+```json
+{"id":"<mac>","cmd":"ota","version":"1.1"}
+```
+Device checks if `version` is newer than its current firmware (numeric `major.minor` comparison, ignoring any `-dev` suffix). If newer, it constructs the download URL from `OTA_FIRMWARE_URL_TEMPLATE` in `config.h`.
+
+On success or failure the device restarts silently; the first data packet with the new `fw` version confirms a successful update.
 
 Gateway used: OpenMQTTGateway on a LilyGO board.

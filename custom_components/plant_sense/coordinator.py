@@ -1,6 +1,7 @@
 """Coordinator for PlantSense."""
 
 import asyncio
+import json
 import logging
 from abc import ABC, abstractmethod
 
@@ -25,12 +26,15 @@ from .const import (
     DATA_CONFIRMED_TEST_MODE,
     DATA_LAST_CONFIG_VERSION,
     DOMAIN,
+    OPTIONS_AUTO_UPDATE,
     OPTIONS_ENABLE_TEST,
     OPTIONS_MOI_DRY,
     OPTIONS_MOI_WET,
+    OPTIONS_SSID,
     OPTIONS_UPDATE_CONFIG,
     OPTIONS_UPDATE_NAME,
     OPTIONS_UPDATE_TEST_MODE,
+    OPTIONS_WIFI_PWD,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +57,8 @@ class PlantSenseCoordinator:
     _device_registry: DeviceRegistry
     _display_name: str
     _firmware_version: str | None
+    _latest_firmware_version: str | None
+    _wifi_configured: bool | None
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry[PlantSenseData]) -> None:
         """Initialize PlantSenseCoordinator."""
@@ -64,6 +70,8 @@ class PlantSenseCoordinator:
         self._device_registry = dr.async_get(self.hass)
         self._display_name = entry.title
         self._firmware_version = None
+        self._latest_firmware_version = None
+        self._wifi_configured = None
         self._components = []
 
     async def handle_message(self, json_message: JsonObjectType) -> None:
@@ -73,8 +81,11 @@ class PlantSenseCoordinator:
 
         if msg_type == "data":
             await self._update_sensors(json_message)
+            await self._handle_pending_commands(json_message)
         elif msg_type == "config":
             await self._update_config(json_message)
+        elif msg_type == "wifi":
+            await self._update_firmware_version(json_message)
 
     async def _request_config(self) -> None:
         """Request the current configuration from the PlantSense."""
@@ -122,6 +133,10 @@ class PlantSenseCoordinator:
             await self._update_device_name(self._display_name)
             await self._update_firmware_version(json_message)
 
+            wifi_set = json_message.get("wifiSet")
+            if isinstance(wifi_set, bool):
+                self._wifi_configured = wifi_set
+
             options = {**self._entry.options}
             data = {**self._entry.data}
 
@@ -145,6 +160,9 @@ class PlantSenseCoordinator:
                 self._entry, title=self._display_name, options=options, data=data
             )
 
+            for component in self._components:
+                await component.update_async()
+
     def register_component(self, component: PlantSenseComponent) -> None:
         self._components.append(component)
 
@@ -165,6 +183,11 @@ class PlantSenseCoordinator:
         self._data = json
         await self._update_firmware_version(json)
 
+        for component in self._components:
+            await component.update_async()
+
+    async def _handle_pending_commands(self, json: JsonObjectType) -> None:
+        """Send any pending config or OTA commands now that the device is online."""
         device_config_version = json.get("v", 0)
         if not isinstance(device_config_version, int):
             _LOGGER.warning("Device '%s' did not send a version.", self.device_id)
@@ -175,20 +198,30 @@ class PlantSenseCoordinator:
         except (KeyError, ValueError):
             ha_config_version = 0
 
-        if self._entry.options.get(OPTIONS_UPDATE_CONFIG, False):
-            # There is a pending configuration update, sending it to the device.
-            _LOGGER.info("Updating configuration for '%s'...", self._device_serial)
-            await self._send_config_to_device()
-        elif ha_config_version != device_config_version:
-            _LOGGER.info(
-                "Config version mismatch (ours: %s, device: %s), requesting config.",
+        if ha_config_version != device_config_version:
+            _LOGGER.warning(
+                "Config version mismatch (ours: %s, device: %s) — "
+                "discarding pending changes and fetching config from device.",
                 ha_config_version,
                 device_config_version,
             )
+            await self.async_abort_config_push()
             await self._request_config()
-
-        for component in self._components:
-            await component.update_async()
+        elif self._entry.options.get(OPTIONS_UPDATE_CONFIG, False):
+            _LOGGER.info("Updating configuration for '%s'...", self._device_serial)
+            await self._send_config_to_device()
+        elif (
+            self._entry.options.get(OPTIONS_AUTO_UPDATE, False)
+            and self._latest_firmware_version is not None
+            and self._firmware_version is not None
+            and self._latest_firmware_version != self._firmware_version
+        ):
+            _LOGGER.info(
+                "Auto-update: sending OTA version '%s' to '%s'.",
+                self._latest_firmware_version,
+                self._device_serial,
+            )
+            await self._send_ota_to_device(self._latest_firmware_version)
 
     async def _update_device_name(self, new_name: str) -> None:
         """Update the name of the device."""
@@ -218,12 +251,27 @@ class PlantSenseCoordinator:
         test_mode = self._entry.options.get(OPTIONS_UPDATE_TEST_MODE, False)
         moi_dry = self._entry.options.get(OPTIONS_MOI_DRY, 0)
         moi_wet = self._entry.options.get(OPTIONS_MOI_WET, 0)
+        ssid = self._entry.options.get(OPTIONS_SSID, "")
+        wifi_pwd = self._entry.options.get(OPTIONS_WIFI_PWD, "")
+
+        inner: dict = {
+            "id": self._device_serial,
+            "cmd": "set_config",
+            "test": test_mode,
+            "name": name,
+            "moiDry": moi_dry,
+            "moiWet": moi_wet,
+        }
+        if ssid:
+            inner["ssid"] = ssid
+        if wifi_pwd:
+            inner["wifiPwd"] = wifi_pwd
 
         await asyncio.sleep(0.1)
         await mqtt.client.async_publish(
             self.hass,
             "devices/OMG_LILYGO/commands/MQTTtoLORA",
-            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"set_config\\",\\"test\\":{str(test_mode).lower()},\\"name\\":\\"{name}\\",\\"moiDry\\":{moi_dry},\\"moiWet\\":{moi_wet}}}"}}',
+            json.dumps({"message": json.dumps(inner)}),
         )
 
     async def async_abort_config_push(self) -> None:
@@ -250,9 +298,50 @@ class PlantSenseCoordinator:
 
         self.hass.config_entries.async_update_entry(self._entry, options=options)
 
+    async def _send_ota_to_device(self, version: str) -> None:
+        """Publish an OTA update command to the device."""
+        inner = {"id": self._device_serial, "cmd": "ota", "version": version}
+        await asyncio.sleep(0.1)
+        await mqtt.client.async_publish(
+            self.hass,
+            "devices/OMG_LILYGO/commands/MQTTtoLORA",
+            json.dumps({"message": json.dumps(inner)}),
+        )
+
+    def set_latest_firmware_version(self, version: str | None) -> None:
+        """Store the latest firmware version reported by the update entity."""
+        self._latest_firmware_version = version
+
+    async def async_schedule_fetch_device_config(self) -> None:
+        """Reset stored config version to zero to force get_config on next contact."""
+        data = {**self._entry.data, DATA_LAST_CONFIG_VERSION: 0}
+        options = {**self._entry.options, OPTIONS_UPDATE_CONFIG: False}
+        self.hass.config_entries.async_update_entry(
+            self._entry, data=data, options=options
+        )
+
     @property
     def config_pending(self) -> bool:
         return bool(self._entry.options.get(OPTIONS_UPDATE_CONFIG, False))
+
+    @property
+    def auto_update(self) -> bool:
+        return bool(self._entry.options.get(OPTIONS_AUTO_UPDATE, False))
+
+    @property
+    def config_version(self) -> int:
+        try:
+            return int(self._entry.data.get(DATA_LAST_CONFIG_VERSION, 0))
+        except (ValueError, TypeError):
+            return 0
+
+    @property
+    def firmware_version(self) -> str | None:
+        return self._firmware_version
+
+    @property
+    def wifi_configured(self) -> bool | None:
+        return self._wifi_configured
 
     @property
     def entry(self) -> ConfigEntry[PlantSenseData]:

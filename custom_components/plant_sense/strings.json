@@ -25,11 +25,14 @@
         "title": "Configure PlantSense Device",
         "description": "Changes to device settings are pushed automatically on the next received message. Use the 'Cancel Config Push' button entity to abort a pending update.",
         "data": {
+          "auto_update": "Automatically install firmware updates when the device comes online",
           "enable_test": "Use data from devices in test mode",
           "moi_dry": "Moisture dry point (raw ADC value when soil is dry)",
           "moi_wet": "Moisture wet point (raw ADC value when soil is wet)",
           "name": "Change the name of the device",
-          "update_test_mode": "Enable test mode on the device"
+          "ssid": "WiFi SSID (required before OTA update)",
+          "update_test_mode": "Enable test mode on the device",
+          "wifi_pwd": "WiFi password (required before OTA update)"
         }
       }
     }
@@ -47,6 +50,11 @@
     "button": {
       "cancel_config_push": {
         "name": "Cancel Config Push"
+      }
+    },
+    "update": {
+      "firmware_update": {
+        "name": "Firmware"
       }
     }
   }

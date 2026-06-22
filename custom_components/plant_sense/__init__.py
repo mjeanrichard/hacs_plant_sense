@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 from .coordinator import PlantSenseCoordinator
 from .data import PlantSenseData
 
-PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR, Platform.UPDATE]
 
 _LOGGER = logging.getLogger(__name__)
 

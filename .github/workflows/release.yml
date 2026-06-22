@@ -2,11 +2,14 @@
 name: "Release"
 
 on:
-  release:
-    types:
-      - "published"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.1)'
+        required: true
 
-permissions: {}
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -23,6 +26,14 @@ jobs:
         run: |
           cd "${{ github.workspace }}/custom_components/plant_sense"
           zip plant_sense.zip -r ./
+
+      - name: Commit and tag
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ inputs.version }}"
+          git push origin tag "v${{ inputs.version }}"
 
       - name: "Upload the ZIP file to the release"
         uses: "softprops/action-gh-release@v2.5.0"

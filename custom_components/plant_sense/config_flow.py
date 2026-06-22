@@ -22,12 +22,15 @@ from .const import (
     DISCOVERY_NAME,
     DISCOVERY_SERIAL,
     DOMAIN,
+    OPTIONS_AUTO_UPDATE,
     OPTIONS_ENABLE_TEST,
     OPTIONS_MOI_DRY,
     OPTIONS_MOI_WET,
+    OPTIONS_SSID,
     OPTIONS_UPDATE_CONFIG,
     OPTIONS_UPDATE_NAME,
     OPTIONS_UPDATE_TEST_MODE,
+    OPTIONS_WIFI_PWD,
 )
 
 if TYPE_CHECKING:
@@ -144,6 +147,8 @@ class OptionsFlowHandler(OptionsFlow):
                 OPTIONS_UPDATE_TEST_MODE,
                 OPTIONS_MOI_DRY,
                 OPTIONS_MOI_WET,
+                OPTIONS_SSID,
+                OPTIONS_WIFI_PWD,
             ]
             config_changed = any(
                 user_input.get(key) != self.entry.options.get(key)
@@ -162,6 +167,9 @@ class OptionsFlowHandler(OptionsFlow):
         name = self.entry.options.get(OPTIONS_UPDATE_NAME, "")
         moi_dry = self.entry.options.get(OPTIONS_MOI_DRY, 0)
         moi_wet = self.entry.options.get(OPTIONS_MOI_WET, 0)
+        ssid = self.entry.options.get(OPTIONS_SSID, "")
+        wifi_pwd = self.entry.options.get(OPTIONS_WIFI_PWD, "")
+        auto_update = self.entry.options.get(OPTIONS_AUTO_UPDATE, False)
 
         return self.async_show_form(
             step_id="init",
@@ -172,6 +180,9 @@ class OptionsFlowHandler(OptionsFlow):
                     vol.Optional(OPTIONS_UPDATE_TEST_MODE, default=test_mode): bool,
                     vol.Optional(OPTIONS_MOI_DRY, default=moi_dry): int,
                     vol.Optional(OPTIONS_MOI_WET, default=moi_wet): int,
+                    vol.Optional(OPTIONS_SSID, default=ssid): str,
+                    vol.Optional(OPTIONS_WIFI_PWD, default=wifi_pwd): str,
+                    vol.Optional(OPTIONS_AUTO_UPDATE, default=auto_update): bool,
                 }
             ),
         )
