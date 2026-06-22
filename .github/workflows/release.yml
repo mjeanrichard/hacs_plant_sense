@@ -36,7 +36,7 @@ jobs:
           git push origin tag "v${{ inputs.version }}"
 
       - name: "Upload the ZIP file to the release"
-        uses: "softprops/action-gh-release@v2.5.0"
+        uses: "softprops/action-gh-release@v3.0.1"
         with:
           files: |
             ${{ github.workspace }}/custom_components/plant_sense/plant_sense.zip
