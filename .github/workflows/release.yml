@@ -36,7 +36,7 @@ jobs:
           git push origin tag "v${{ inputs.version }}"
 
       - name: "Upload the ZIP file to the release"
-        uses: "softprops/action-gh-release@v3.0.1"
+        uses: "softprops/action-gh-release@v3.0.2"
         with:
           tag_name: "v${{ inputs.version }}"
           name: v${{ inputs.version }}
