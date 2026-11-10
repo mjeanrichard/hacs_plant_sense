@@ -7,12 +7,14 @@ from homeassistant.components.sensor import (
     ENTITY_ID_FORMAT,
     SensorDeviceClass,
     SensorEntity,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS,
     EntityCategory,
+    UnitOfElectricPotential,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -44,6 +46,7 @@ async def async_setup_entry(
             unit_of_measurement=PERCENTAGE,
             id_suffix="battery",
             name="Battery",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="batPct",
         ),
         GenericPlantSenseSensor(
@@ -53,6 +56,7 @@ async def async_setup_entry(
             unit_of_measurement=PERCENTAGE,
             id_suffix="moisture",
             name="Moisture",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="moi",
         ),
         GenericPlantSenseSensor(
@@ -62,6 +66,7 @@ async def async_setup_entry(
             unit_of_measurement=PERCENTAGE,
             id_suffix="humidity",
             name="Humidity",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="hum",
         ),
         GenericPlantSenseSensor(
@@ -71,6 +76,7 @@ async def async_setup_entry(
             unit_of_measurement=UnitOfTemperature.CELSIUS,
             id_suffix="temperature",
             name="Temperature",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="tempc",
         ),
         GenericPlantSenseSensor(
@@ -80,6 +86,7 @@ async def async_setup_entry(
             unit_of_measurement=SIGNAL_STRENGTH_DECIBELS,
             id_suffix="rssi",
             name="RSSI",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="rssi",
             entity_category=EntityCategory.DIAGNOSTIC,
         ),
@@ -90,6 +97,7 @@ async def async_setup_entry(
             unit_of_measurement=None,
             id_suffix="snr",
             name="SNR",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="snr",
             icon="mdi:wifi",
             entity_category=EntityCategory.DIAGNOSTIC,
@@ -107,10 +115,11 @@ async def async_setup_entry(
         GenericPlantSenseSensor(
             hass=hass,
             coordinator=data.coordinator,
-            device_class=None,
-            unit_of_measurement="V",
+            device_class=SensorDeviceClass.VOLTAGE,
+            unit_of_measurement=UnitOfElectricPotential.VOLT,
             id_suffix="battery_volt",
             name="Battery Voltage",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="bat",
             entity_category=EntityCategory.DIAGNOSTIC,
         ),
@@ -122,6 +131,7 @@ async def async_setup_entry(
             unit_of_measurement=None,
             id_suffix="moisture_raw",
             name="Moisture Raw",
+            state_class=SensorStateClass.MEASUREMENT,
             value_key="moiRaw",
             entity_category=EntityCategory.DIAGNOSTIC,
         ),
@@ -147,11 +157,13 @@ class GenericPlantSenseSensor(SensorEntity, PlantSenseComponent):
         value_key: str,
         icon: str | None = None,
         entity_category: EntityCategory | None = None,
+        state_class: SensorStateClass | None = None,
     ) -> None:
         """Initialize the sensor."""
         self._coordinator = coordinator
         self._attr_should_poll = False
         self._attr_device_class = device_class
+        self._attr_state_class = state_class
         self._attr_native_unit_of_measurement = unit_of_measurement
         self._attr_unique_id = f"{coordinator.device_id}_{id_suffix}"
         self._attr_icon = icon

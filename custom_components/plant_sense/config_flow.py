@@ -14,6 +14,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from custom_components.plant_sense.helpers import build_unique_id
 
@@ -38,6 +43,17 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Options that are part of the device configuration; changing any of them
+# schedules a config push to the device.
+DEVICE_CONFIG_FIELDS = (
+    OPTIONS_UPDATE_NAME,
+    OPTIONS_UPDATE_TEST_MODE,
+    OPTIONS_MOI_DRY,
+    OPTIONS_MOI_WET,
+    OPTIONS_SSID,
+    OPTIONS_WIFI_PWD,
+)
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_DEVICE_SERIAL): str,
@@ -59,17 +75,22 @@ class PlantSenseConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         errors: dict[str, str] = {}
 
-        if user_input is None:
-            return self.async_show_form(
-                step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
-            )
+        if user_input is not None:
+            serial = str(user_input[CONF_DEVICE_SERIAL]).strip()
+            if serial:
+                device_unique_id = build_unique_id(serial)
 
-        device_unique_id = build_unique_id(user_input[CONF_DEVICE_SERIAL])
+                await self.async_set_unique_id(device_unique_id)
+                self._abort_if_unique_id_configured()
 
-        await self.async_set_unique_id(device_unique_id)
-        self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=device_unique_id, data={CONF_DEVICE_SERIAL: serial}
+                )
+            errors[CONF_DEVICE_SERIAL] = "invalid_serial"
 
-        return self.async_create_entry(title=device_unique_id, data=user_input)
+        return self.async_show_form(
+            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+        )
 
     @staticmethod
     @callback
@@ -137,22 +158,32 @@ class OptionsFlowHandler(OptionsFlow):
         """Initialize option."""
         self.entry = entry
 
+    def _current_values(self) -> dict[str, Any]:
+        """Return the current option values, with the defaults shown in the form."""
+        options = self.entry.options
+        return {
+            OPTIONS_ENABLE_TEST: options.get(OPTIONS_ENABLE_TEST, False),
+            OPTIONS_UPDATE_NAME: options.get(OPTIONS_UPDATE_NAME, ""),
+            OPTIONS_UPDATE_TEST_MODE: options.get(OPTIONS_UPDATE_TEST_MODE, False),
+            OPTIONS_MOI_DRY: options.get(OPTIONS_MOI_DRY, 0),
+            OPTIONS_MOI_WET: options.get(OPTIONS_MOI_WET, 0),
+            OPTIONS_SSID: options.get(OPTIONS_SSID, ""),
+            OPTIONS_WIFI_PWD: options.get(OPTIONS_WIFI_PWD, ""),
+            OPTIONS_AUTO_UPDATE: options.get(OPTIONS_AUTO_UPDATE, False),
+        }
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Display option dialog."""
+        current = self._current_values()
+
         if user_input is not None:
-            config_fields = [
-                OPTIONS_UPDATE_NAME,
-                OPTIONS_UPDATE_TEST_MODE,
-                OPTIONS_MOI_DRY,
-                OPTIONS_MOI_WET,
-                OPTIONS_SSID,
-                OPTIONS_WIFI_PWD,
-            ]
+            # Compare against the values the form was pre-filled with, so that
+            # options which were never stored don't count as a device change.
             config_changed = any(
-                user_input.get(key) != self.entry.options.get(key)
-                for key in config_fields
+                user_input.get(key, current[key]) != current[key]
+                for key in DEVICE_CONFIG_FIELDS
             )
             options = {**user_input}
             options[OPTIONS_UPDATE_CONFIG] = (
@@ -162,27 +193,33 @@ class OptionsFlowHandler(OptionsFlow):
             )
             return self.async_create_entry(title="", data=options)
 
-        enable_test = self.entry.options.get(OPTIONS_ENABLE_TEST, False)
-        test_mode = self.entry.options.get(OPTIONS_UPDATE_TEST_MODE, False)
-        name = self.entry.options.get(OPTIONS_UPDATE_NAME, "")
-        moi_dry = self.entry.options.get(OPTIONS_MOI_DRY, 0)
-        moi_wet = self.entry.options.get(OPTIONS_MOI_WET, 0)
-        ssid = self.entry.options.get(OPTIONS_SSID, "")
-        wifi_pwd = self.entry.options.get(OPTIONS_WIFI_PWD, "")
-        auto_update = self.entry.options.get(OPTIONS_AUTO_UPDATE, False)
-
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(OPTIONS_ENABLE_TEST, default=enable_test): bool,
-                    vol.Optional(OPTIONS_UPDATE_NAME, default=name): str,
-                    vol.Optional(OPTIONS_UPDATE_TEST_MODE, default=test_mode): bool,
-                    vol.Optional(OPTIONS_MOI_DRY, default=moi_dry): int,
-                    vol.Optional(OPTIONS_MOI_WET, default=moi_wet): int,
-                    vol.Optional(OPTIONS_SSID, default=ssid): str,
-                    vol.Optional(OPTIONS_WIFI_PWD, default=wifi_pwd): str,
-                    vol.Optional(OPTIONS_AUTO_UPDATE, default=auto_update): bool,
+                    vol.Optional(
+                        OPTIONS_ENABLE_TEST, default=current[OPTIONS_ENABLE_TEST]
+                    ): bool,
+                    vol.Optional(
+                        OPTIONS_UPDATE_NAME, default=current[OPTIONS_UPDATE_NAME]
+                    ): str,
+                    vol.Optional(
+                        OPTIONS_UPDATE_TEST_MODE,
+                        default=current[OPTIONS_UPDATE_TEST_MODE],
+                    ): bool,
+                    vol.Optional(
+                        OPTIONS_MOI_DRY, default=current[OPTIONS_MOI_DRY]
+                    ): int,
+                    vol.Optional(
+                        OPTIONS_MOI_WET, default=current[OPTIONS_MOI_WET]
+                    ): int,
+                    vol.Optional(OPTIONS_SSID, default=current[OPTIONS_SSID]): str,
+                    vol.Optional(
+                        OPTIONS_WIFI_PWD, default=current[OPTIONS_WIFI_PWD]
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+                    vol.Optional(
+                        OPTIONS_AUTO_UPDATE, default=current[OPTIONS_AUTO_UPDATE]
+                    ): bool,
                 }
             ),
         )

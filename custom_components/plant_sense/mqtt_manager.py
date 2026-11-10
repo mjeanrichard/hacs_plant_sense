@@ -1,84 +1,64 @@
 """MQTT manager for PlantSense."""
 
 import logging
-from typing import Any
 
 import homeassistant.helpers.device_registry as dr
 from homeassistant.components import mqtt
 from homeassistant.components.mqtt.models import ReceiveMessage
 from homeassistant.config_entries import SOURCE_INTEGRATION_DISCOVERY, ConfigEntryState
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers import discovery_flow
 from homeassistant.util.json import JsonObjectType, json_loads_object
 
-from custom_components.plant_sense.const import DISCOVERY_NAME, DISCOVERY_SERIAL, DOMAIN
+from custom_components.plant_sense.const import (
+    DISCOVERY_NAME,
+    DISCOVERY_SERIAL,
+    DOMAIN,
+    MQTT_SUBSCRIBE_TOPIC,
+)
 from custom_components.plant_sense.data import PlantSenseData
 from custom_components.plant_sense.helpers import build_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
-_SUBSCRIBE_TOPIC = "devices/OMG_LILYGO/LORAtoMQTT/#"
-
 
 class MqttManager:
-    """Manages the MQTT connection for PlantSense devices."""
+    """Manages the MQTT subscription for PlantSense devices."""
 
-    _data: Any
-    _is_connected: bool
     _unsubscribe_mqtt: CALLBACK_TYPE | None
-    _unsubscribe_status: CALLBACK_TYPE | None
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize MqttManager."""
         self._hass = hass
-        self._data = None
-        self._is_connected = False
         self._unsubscribe_mqtt = None
-        self._unsubscribe_status = None
 
     async def connect(self) -> None:
-        """Subscribe to the PlantSense MQTT topic and watch for reconnections."""
-        self._unsubscribe_status = mqtt.async_subscribe_connection_status(
-            self._hass, self._connection_status_changed
-        )
-        await self._subscribe()
+        """
+        Subscribe to the PlantSense MQTT topic.
 
-    async def _subscribe(self) -> None:
+        The HA MQTT client restores all subscriptions after a broker reconnect, so
+        there is no need to watch the connection state here.
+        """
+        if self._unsubscribe_mqtt is not None:
+            return
         self._unsubscribe_mqtt = await mqtt.client.async_subscribe(
             self._hass,
-            _SUBSCRIBE_TOPIC,
+            MQTT_SUBSCRIBE_TOPIC,
             self._async_mqtt_callback,
         )
-        self._is_connected = True
-        _LOGGER.debug("Subscribed to %s.", _SUBSCRIBE_TOPIC)
-
-    @callback
-    def _connection_status_changed(self, status: str) -> None:
-        if status == mqtt.CONNECTION_SUCCESS:
-            _LOGGER.info("MQTT reconnected — re-subscribing to PlantSense topic.")
-            self._hass.async_create_task(self._resubscribe())
-
-    async def _resubscribe(self) -> None:
-        if self._unsubscribe_mqtt is not None:
-            self._unsubscribe_mqtt()
-            self._unsubscribe_mqtt = None
-        await self._subscribe()
+        _LOGGER.debug("Subscribed to %s.", MQTT_SUBSCRIBE_TOPIC)
 
     def _is_plant_sense_message(self, json_message: JsonObjectType) -> bool:
         return json_message.get("model") == "PlantSense" and "id" in json_message
 
     def is_connected(self) -> bool:
-        return self._is_connected
+        return self._unsubscribe_mqtt is not None
 
     def disconnect(self) -> None:
-        """Unsubscribe from MQTT topic and stop watching connection status."""
+        """Unsubscribe from the MQTT topic."""
         if self._unsubscribe_mqtt is not None:
             self._unsubscribe_mqtt()
             self._unsubscribe_mqtt = None
-        if self._unsubscribe_status is not None:
-            self._unsubscribe_status()
-            self._unsubscribe_status = None
-        self._is_connected = False
 
     def _start_discovery(self, device_id: str, name: str) -> None:
         _LOGGER.info("Starting discovery for '%s' (%s).", name, device_id)
@@ -93,9 +73,6 @@ class MqttManager:
         """Parse incoming MQTT payload and route it to the right coordinator."""
         try:
             json_message = json_loads_object(message.payload)
-            if not isinstance(json_message, dict):
-                _LOGGER.error("Received invalid JSON from message: %s", message.payload)
-                return
         except ValueError:
             _LOGGER.info("Error parsing JSON from message: %s", message)
             return

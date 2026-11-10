@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
 import homeassistant.helpers.device_registry as dr
 from homeassistant.components import mqtt
@@ -25,7 +26,9 @@ from .const import (
     DATA_CONFIRMED_NAME,
     DATA_CONFIRMED_TEST_MODE,
     DATA_LAST_CONFIG_VERSION,
+    DATA_WIFI_CONFIGURED,
     DOMAIN,
+    MQTT_COMMAND_TOPIC,
     OPTIONS_AUTO_UPDATE,
     OPTIONS_ENABLE_TEST,
     OPTIONS_MOI_DRY,
@@ -36,8 +39,13 @@ from .const import (
     OPTIONS_UPDATE_TEST_MODE,
     OPTIONS_WIFI_PWD,
 )
+from .helpers import is_newer_firmware
 
 _LOGGER = logging.getLogger(__name__)
+
+# Short delay before sending a downlink so the gateway has finished handling the
+# uplink that triggered it.
+COMMAND_DELAY_SECONDS = 0.1
 
 
 class PlantSenseComponent(ABC):
@@ -71,7 +79,10 @@ class PlantSenseCoordinator:
         self._display_name = entry.title
         self._firmware_version = None
         self._latest_firmware_version = None
-        self._wifi_configured = None
+        wifi_configured = entry.data.get(DATA_WIFI_CONFIGURED)
+        self._wifi_configured = (
+            wifi_configured if isinstance(wifi_configured, bool) else None
+        )
         self._components = []
 
     async def handle_message(self, json_message: JsonObjectType) -> None:
@@ -87,21 +98,42 @@ class PlantSenseCoordinator:
         elif msg_type == "wifi":
             await self._update_firmware_version(json_message)
 
+    async def _publish_command(self, command: dict[str, Any]) -> None:
+        """Publish a LoRa downlink command (JSON wrapped in a JSON string)."""
+        await asyncio.sleep(COMMAND_DELAY_SECONDS)
+        await mqtt.client.async_publish(
+            self.hass,
+            MQTT_COMMAND_TOPIC,
+            json.dumps({"message": json.dumps(command)}),
+        )
+
     async def _request_config(self) -> None:
         """Request the current configuration from the PlantSense."""
         _LOGGER.info("Requesting config for %s.", self._device_serial)
-        await asyncio.sleep(0.1)
-        await mqtt.client.async_publish(
-            self.hass,
-            "devices/OMG_LILYGO/commands/MQTTtoLORA",
-            f'{{"message":"{{\\"id\\":\\"{self._device_serial}\\",\\"cmd\\":\\"get_config\\"}}"}}',
-        )
+        await self._publish_command({"id": self._device_serial, "cmd": "get_config"})
+
+    def _stored_config_version(self) -> int | None:
+        """Return the config version last confirmed by the device, None if unknown."""
+        version = self._entry.data.get(DATA_LAST_CONFIG_VERSION)
+        if version is None:
+            return None
+        try:
+            return int(version)
+        except (ValueError, TypeError):
+            return None
 
     async def _update_config(self, json_message: JsonObjectType) -> None:
         """Update the configuration from the PlantSense."""
+        await self._update_firmware_version(json_message)
+        self._update_wifi_configured(json_message)
+
         new_config_version = json_message.get("v", 0)
         if not isinstance(new_config_version, int):
             new_config_version = 0
+
+        old_config_version = self._stored_config_version()
+        if old_config_version == new_config_version:
+            return
 
         new_name = str(json_message.get("name", "unknown"))
 
@@ -117,57 +149,67 @@ class PlantSenseCoordinator:
         if not isinstance(moi_wet, int):
             moi_wet = None
 
-        try:
-            old_config_version = int(self._entry.data.get(DATA_LAST_CONFIG_VERSION, 0))
-        except (ValueError, TypeError):
-            old_config_version = 0
+        _LOGGER.info(
+            "Storing config version %s (replacing %s).",
+            new_config_version,
+            old_config_version,
+        )
 
-        if new_config_version != old_config_version:
-            _LOGGER.info(
-                "Storing config version %s (replacing %s).",
-                new_config_version,
-                old_config_version,
-            )
+        self._display_name = f"PlantSense {new_name}"
+        await self._update_device_name(self._display_name)
 
-            self._display_name = f"PlantSense {new_name}"
-            await self._update_device_name(self._display_name)
-            await self._update_firmware_version(json_message)
+        options = {**self._entry.options}
+        data = {**self._entry.data}
 
-            wifi_set = json_message.get("wifiSet")
-            if isinstance(wifi_set, bool):
-                self._wifi_configured = wifi_set
+        options[OPTIONS_UPDATE_CONFIG] = False
+        options[OPTIONS_UPDATE_NAME] = new_name
+        options[OPTIONS_UPDATE_TEST_MODE] = test_mode
+        # The WiFi password is only kept until the device has confirmed the
+        # config; never store it permanently.
+        options[OPTIONS_WIFI_PWD] = ""
+        if moi_dry is not None:
+            options[OPTIONS_MOI_DRY] = moi_dry
+        if moi_wet is not None:
+            options[OPTIONS_MOI_WET] = moi_wet
 
-            options = {**self._entry.options}
-            data = {**self._entry.data}
+        data[DATA_LAST_CONFIG_VERSION] = new_config_version
+        data[DATA_CONFIRMED_NAME] = new_name
+        data[DATA_CONFIRMED_TEST_MODE] = test_mode
+        if moi_dry is not None:
+            data[DATA_CONFIRMED_MOI_DRY] = moi_dry
+        if moi_wet is not None:
+            data[DATA_CONFIRMED_MOI_WET] = moi_wet
 
-            options[OPTIONS_UPDATE_CONFIG] = False
-            options[OPTIONS_UPDATE_NAME] = new_name
-            options[OPTIONS_UPDATE_TEST_MODE] = test_mode
-            if moi_dry is not None:
-                options[OPTIONS_MOI_DRY] = moi_dry
-            if moi_wet is not None:
-                options[OPTIONS_MOI_WET] = moi_wet
+        self.hass.config_entries.async_update_entry(
+            self._entry, title=self._display_name, options=options, data=data
+        )
 
-            data[DATA_LAST_CONFIG_VERSION] = new_config_version
-            data[DATA_CONFIRMED_NAME] = new_name
-            data[DATA_CONFIRMED_TEST_MODE] = test_mode
-            if moi_dry is not None:
-                data[DATA_CONFIRMED_MOI_DRY] = moi_dry
-            if moi_wet is not None:
-                data[DATA_CONFIRMED_MOI_WET] = moi_wet
+        await self._notify_components()
 
+    def _update_wifi_configured(self, json_message: JsonObjectType) -> None:
+        """Track (and persist) whether WiFi credentials are set on the device."""
+        wifi_set = json_message.get("wifiSet")
+        if not isinstance(wifi_set, bool):
+            return
+        self._wifi_configured = wifi_set
+        if self._entry.data.get(DATA_WIFI_CONFIGURED) != wifi_set:
             self.hass.config_entries.async_update_entry(
-                self._entry, title=self._display_name, options=options, data=data
+                self._entry, data={**self._entry.data, DATA_WIFI_CONFIGURED: wifi_set}
             )
-
-            for component in self._components:
-                await component.update_async()
 
     def register_component(self, component: PlantSenseComponent) -> None:
         self._components.append(component)
 
     def remove_component(self, component: PlantSenseComponent) -> None:
         self._components.remove(component)
+
+    async def _notify_components(self) -> None:
+        """Let every registered component refresh; one failure must not stop others."""
+        for component in list(self._components):
+            try:
+                await component.update_async()
+            except Exception:
+                _LOGGER.exception("Error updating component %s", component)
 
     async def _update_sensors(self, json: JsonObjectType) -> None:
         """Update the Sensors with the new Data."""
@@ -182,9 +224,7 @@ class PlantSenseCoordinator:
 
         self._data = json
         await self._update_firmware_version(json)
-
-        for component in self._components:
-            await component.update_async()
+        await self._notify_components()
 
     async def _handle_pending_commands(self, json: JsonObjectType) -> None:
         """Send any pending config or OTA commands now that the device is online."""
@@ -193,12 +233,11 @@ class PlantSenseCoordinator:
             _LOGGER.warning("Device '%s' did not send a version.", self.device_id)
             device_config_version = 0
 
-        try:
-            ha_config_version = int(self._entry.data[DATA_LAST_CONFIG_VERSION])
-        except (KeyError, ValueError):
-            ha_config_version = 0
+        ha_config_version = self._stored_config_version()
 
         if ha_config_version != device_config_version:
+            # Also covers a device whose config was never fetched (None): never push
+            # a config built from form defaults before the device's values are known.
             _LOGGER.warning(
                 "Config version mismatch (ours: %s, device: %s) — "
                 "discarding pending changes and fetching config from device.",
@@ -210,18 +249,25 @@ class PlantSenseCoordinator:
         elif self._entry.options.get(OPTIONS_UPDATE_CONFIG, False):
             _LOGGER.info("Updating configuration for '%s'...", self._device_serial)
             await self._send_config_to_device()
-        elif (
-            self._entry.options.get(OPTIONS_AUTO_UPDATE, False)
-            and self._latest_firmware_version is not None
-            and self._firmware_version is not None
-            and self._latest_firmware_version != self._firmware_version
-        ):
+        elif self._should_auto_update():
             _LOGGER.info(
                 "Auto-update: sending OTA version '%s' to '%s'.",
                 self._latest_firmware_version,
                 self._device_serial,
             )
-            await self._send_ota_to_device(self._latest_firmware_version)
+            await self._send_ota_to_device(str(self._latest_firmware_version))
+
+    def _should_auto_update(self) -> bool:
+        """Return True if an OTA command should be sent on this contact."""
+        if not self._entry.options.get(OPTIONS_AUTO_UPDATE, False):
+            return False
+        if self._latest_firmware_version is None or self._firmware_version is None:
+            return False
+        if self._wifi_configured is False:
+            # The device downloads the firmware over WiFi; without credentials the
+            # OTA attempt can only fail.
+            return False
+        return is_newer_firmware(self._latest_firmware_version, self._firmware_version)
 
     async def _update_device_name(self, new_name: str) -> None:
         """Update the name of the device."""
@@ -254,7 +300,7 @@ class PlantSenseCoordinator:
         ssid = self._entry.options.get(OPTIONS_SSID, "")
         wifi_pwd = self._entry.options.get(OPTIONS_WIFI_PWD, "")
 
-        inner: dict = {
+        inner: dict[str, Any] = {
             "id": self._device_serial,
             "cmd": "set_config",
             "test": test_mode,
@@ -267,12 +313,7 @@ class PlantSenseCoordinator:
         if wifi_pwd:
             inner["wifiPwd"] = wifi_pwd
 
-        await asyncio.sleep(0.1)
-        await mqtt.client.async_publish(
-            self.hass,
-            "devices/OMG_LILYGO/commands/MQTTtoLORA",
-            json.dumps({"message": json.dumps(inner)}),
-        )
+        await self._publish_command(inner)
 
     async def async_abort_config_push(self) -> None:
         """Cancel a pending config push and revert options to last confirmed values."""
@@ -283,6 +324,8 @@ class PlantSenseCoordinator:
         options = {**self._entry.options}
 
         options[OPTIONS_UPDATE_CONFIG] = False
+        # Discard any pending WiFi password; it is never stored permanently.
+        options[OPTIONS_WIFI_PWD] = ""
         options[OPTIONS_UPDATE_NAME] = data.get(
             DATA_CONFIRMED_NAME, options.get(OPTIONS_UPDATE_NAME, "")
         )
@@ -300,12 +343,8 @@ class PlantSenseCoordinator:
 
     async def _send_ota_to_device(self, version: str) -> None:
         """Publish an OTA update command to the device."""
-        inner = {"id": self._device_serial, "cmd": "ota", "version": version}
-        await asyncio.sleep(0.1)
-        await mqtt.client.async_publish(
-            self.hass,
-            "devices/OMG_LILYGO/commands/MQTTtoLORA",
-            json.dumps({"message": json.dumps(inner)}),
+        await self._publish_command(
+            {"id": self._device_serial, "cmd": "ota", "version": version}
         )
 
     def set_latest_firmware_version(self, version: str | None) -> None:
@@ -313,8 +352,9 @@ class PlantSenseCoordinator:
         self._latest_firmware_version = version
 
     async def async_schedule_fetch_device_config(self) -> None:
-        """Reset stored config version to zero to force get_config on next contact."""
-        data = {**self._entry.data, DATA_LAST_CONFIG_VERSION: 0}
+        """Forget the stored config version to force get_config on next contact."""
+        data = {**self._entry.data}
+        data.pop(DATA_LAST_CONFIG_VERSION, None)
         options = {**self._entry.options, OPTIONS_UPDATE_CONFIG: False}
         self.hass.config_entries.async_update_entry(
             self._entry, data=data, options=options
@@ -330,10 +370,7 @@ class PlantSenseCoordinator:
 
     @property
     def config_version(self) -> int:
-        try:
-            return int(self._entry.data.get(DATA_LAST_CONFIG_VERSION, 0))
-        except (ValueError, TypeError):
-            return 0
+        return self._stored_config_version() or 0
 
     @property
     def firmware_version(self) -> str | None:

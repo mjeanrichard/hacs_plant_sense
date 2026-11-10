@@ -20,6 +20,15 @@ ignore = [
     "D102", # Missing docstring in public method
 ]
 
+[lint.per-file-ignores]
+"tests/**" = [
+    "S101",    # assert is how pytest tests are written
+    "PLR2004", # magic values in assertions are fine
+    "ARG001",  # fixtures requested only for their side effects
+    "SLF001",  # tests may inspect private state
+    "D103",    # test functions don't need docstrings
+]
+
 [lint.flake8-pytest-style]
 fixture-parentheses = false
 

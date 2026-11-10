@@ -20,6 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import FIRMWARE_CHECK_INTERVAL_HOURS, FIRMWARE_GITHUB_REPO
 from .coordinator import PlantSenseComponent, PlantSenseCoordinator
+from .helpers import is_newer_firmware
 
 if TYPE_CHECKING:
     from .data import PlantSenseData
@@ -90,20 +91,30 @@ class PlantSenseFirmwareUpdate(UpdateEntity, PlantSenseComponent):
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
-        except (aiohttp.ClientError, TimeoutError):
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            # Keep the last known release; a transient GitHub outage should not
+            # make the entity (or auto-update) forget it.
             _LOGGER.warning(
                 "Failed to fetch latest firmware version from GitHub (%s)",
                 _RELEASES_URL,
             )
-            self._attr_latest_version = None
-            self._release_notes_cache = None
             return
 
-        tag = data.get("tag_name", "")
-        self._attr_latest_version = tag.lstrip("v") if tag else None
+        if not isinstance(data, dict):
+            _LOGGER.warning("Unexpected response from GitHub (%s)", _RELEASES_URL)
+            return
+
+        tag = data.get("tag_name")
+        self._attr_latest_version = (
+            tag.removeprefix("v") if isinstance(tag, str) and tag else None
+        )
         self._attr_release_url = data.get("html_url")
         self._release_notes_cache = data.get("body")
         self._coordinator.set_latest_firmware_version(self._attr_latest_version)
+
+    def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
+        """Compare versions the same way the device does (``-dev`` is ignored)."""
+        return is_newer_firmware(latest_version, installed_version)
 
     async def async_release_notes(self) -> str | None:
         return self._release_notes_cache

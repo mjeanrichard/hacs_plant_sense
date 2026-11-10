@@ -1,0 +1,4 @@
+-r requirements.txt
+# Must match the homeassistant version pinned in requirements.txt
+# (0.13.336 pins homeassistant==2026.6.0).
+pytest-homeassistant-custom-component==0.13.336

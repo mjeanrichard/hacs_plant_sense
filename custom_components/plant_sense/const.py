@@ -23,6 +23,10 @@ DATA_CONFIRMED_NAME = "confirmed_name"
 DATA_CONFIRMED_TEST_MODE = "confirmed_test_mode"
 DATA_CONFIRMED_MOI_DRY = "confirmed_moi_dry"
 DATA_CONFIRMED_MOI_WET = "confirmed_moi_wet"
+DATA_WIFI_CONFIGURED = "wifi_configured"
+
+MQTT_SUBSCRIBE_TOPIC = "devices/OMG_LILYGO/LORAtoMQTT/#"
+MQTT_COMMAND_TOPIC = "devices/OMG_LILYGO/commands/MQTTtoLORA"
 
 DOMAIN_MQTT_MANAGER = "mqtt_manager"
 

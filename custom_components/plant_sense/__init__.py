@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components import mqtt
 from homeassistant.const import Platform
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import DOMAIN, DOMAIN_MQTT_MANAGER
 from .mqtt_manager import MqttManager
@@ -27,8 +28,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up PlantSense from a config entry."""
     # Make sure MQTT integration is enabled and the client is available.
     if not await mqtt.async_wait_for_mqtt_client(hass):
-        _LOGGER.error("MQTT integration is not available")
-        return False
+        msg = "MQTT integration is not available"
+        raise ConfigEntryNotReady(msg)
 
     domain_data = hass.data.setdefault(DOMAIN, {})
     if DOMAIN_MQTT_MANAGER not in domain_data:
@@ -51,4 +52,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading entry %s", entry.entry_id)
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unload_ok:
+        return False
+
+    still_loaded = [
+        other
+        for other in hass.config_entries.async_loaded_entries(DOMAIN)
+        if other.entry_id != entry.entry_id
+    ]
+    if not still_loaded:
+        mqtt_manager: MqttManager | None = hass.data.get(DOMAIN, {}).pop(
+            DOMAIN_MQTT_MANAGER, None
+        )
+        if mqtt_manager is not None:
+            mqtt_manager.disconnect()
+
+    return True
