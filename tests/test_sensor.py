@@ -72,7 +72,7 @@ PREFIX = "sensor.plantsense_aabbccddeeff"
         ("test", "False", None, None, None),
     ],
 )
-async def test_measurement_sensors(  # noqa: PLR0913
+async def test_measurement_sensors(
     hass: HomeAssistant,
     setup_integration: MockConfigEntry,
     suffix: str,

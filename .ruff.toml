@@ -18,6 +18,7 @@ ignore = [
     "D100", # Missing docstring in public module
     "D101", # Missing docstring in public class
     "D102", # Missing docstring in public method
+    "CPY001", # Missing copyright notice (the project is covered by LICENSE)
 ]
 
 [lint.per-file-ignores]
@@ -27,6 +28,8 @@ ignore = [
     "ARG001",  # fixtures requested only for their side effects
     "SLF001",  # tests may inspect private state
     "D103",    # test functions don't need docstrings
+    "PLR0913", # pytest injects fixtures/params by name, so
+    "PLR0917", # argument count/position doesn't matter in tests
 ]
 
 [lint.flake8-pytest-style]

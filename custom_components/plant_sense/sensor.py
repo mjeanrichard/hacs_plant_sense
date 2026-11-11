@@ -148,6 +148,7 @@ class GenericPlantSenseSensor(SensorEntity, PlantSenseComponent):
 
     def __init__(  # noqa: PLR0913
         self,
+        *,
         hass: HomeAssistant,
         coordinator: PlantSenseCoordinator,
         device_class: SensorDeviceClass | None,
